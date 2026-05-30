@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RMC Report Assistant</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════
+     LOGIN SCREEN
+═══════════════════════════════════════════════════════ -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="login-title">RMC <span>Report Assistant</span></div>
+      <div class="login-desc">
+        Đăng nhập hoặc đăng ký bằng tài khoản Microsoft / Google.<br>
+        Tài khoản user cần được admin phê duyệt trước khi truy cập hệ thống.
+      </div>
+      <div class="login-actions">
+        <button class="oauth-btn ms" id="btn-login-microsoft"><i class="fab fa-microsoft"></i> Tiếp tục với
+          Microsoft</button>
+        <button class="oauth-btn gg" id="btn-login-google"><i class="fab fa-google"></i> Tiếp tục với Google</button>
+      </div>
+      <div class="login-status" id="login-status">Chưa đăng nhập</div>
+      <div class="login-hint" id="login-hint">Nếu bạn là user mới, chỉ cần đăng nhập một lần để tạo tài khoản chờ duyệt.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+     MAIN APP
+═══════════════════════════════════════════════════════ -->
+  <div id="app">
+
+    <!-- ── Topbar ── -->
+    <header id="topbar">
+      <button id="btn-menu" class="topbar-btn icon-btn mobile-only"><i class="fas fa-bars"></i></button>
+      <div class="logo">RMC <span>Assistant</span></div>
+
+      <button class="topbar-btn btn-action" id="btn-catch"><i class="fas fa-bolt"></i><span class="desktop-only">
+          Catch</span></button>
+      <div id="clock-display">00:00:00</div>
+      <button class="topbar-btn btn-action" id="btn-continue"><i class="fas fa-play"></i><span class="desktop-only">
+          Continue</span></button>
+
+      <div class="topbar-spacer"></div>
+
+      <button id="btn-theme" title="Chuyển giao diện" class="icon-btn"><i class="fas fa-moon"></i></button>
+      <button class="topbar-btn icon-btn" id="btn-sync" title="Đồng bộ"><i class="fas fa-sync-alt"></i><span
+          class="desktop-only"> Sync Mới</span></button>
+      <button class="topbar-btn icon-btn" id="btn-charts" title="Xem biểu đồ"><i class="fas fa-chart-bar"></i><span
+          class="desktop-only"> Biểu đồ</span></button>
+      <button class="topbar-btn hidden icon-btn" id="btn-admin" title="Quản lý tài khoản"><i
+          class="fas fa-user-shield"></i><span class="desktop-only"> Admin</span></button>
+
+      <div id="auth-badge">
+        <span class="dot"></span>
+        <span class="label desktop-only">Chưa đăng nhập</span>
+      </div>
+      <div id="auth-user" class="hidden"></div>
+      <button class="topbar-btn hidden icon-btn" id="btn-logout" title="Đăng xuất"><i
+          class="fas fa-sign-out-alt"></i><span class="desktop-only"> Đăng xuất</span></button>
+    </header>
+
+    <div id="sidebar-overlay"></div>
+
+    <!-- ── Sidebar ── -->
+    <aside id="sidebar">
+      <div class="sidebar-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="sidebar-section-label" style="margin-bottom:0;">Phân loại</div>
+        <button id="btn-close-sidebar" class="mobile-only"
+          style="background:transparent;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;padding:0 8px;line-height:1;">&times;</button>
+      </div>
+
+      <div class="group-tabs">
+        <button class="group-tab active-aeon" data-group="AEONMALL">AEONMALL</button>
+        <button class="group-tab" data-group="MAXVALUE">MAXVALUE</button>
+      </div>
+
+      <div class="sidebar-search">
+        <input type="text" id="site-search" placeholder="Tìm site...">
+      </div>
+
+      <div class="sidebar-search" style="margin-top:0;">
+        <input type="text" id="item-search" placeholder="Tìm thiết bị...">
+      </div>
+
+      <div id="site-list"></div>
+
+      <!-- Resize handle -->
+      <div id="sidebar-resizer"></div>
+    </aside>
+
+    <!-- ── Main ── -->
+    <main id="main">
+
+      <!-- Output area -->
+      <div id="output-area">
+        <div id="output-header">
+          <span id="output-label">Nội dung báo cáo</span>
+          <div class="spacer"></div>
+          <button class="action-btn btn-copy" id="btn-copy-text">Copy</button>
+          <button class="action-btn btn-clear" id="btn-clear-text">Clear</button>
+        </div>
+        <textarea id="output-text" placeholder="Chọn một site và mục báo cáo từ menu bên trái..."></textarea>
+      </div>
+
+      <!-- Action strip -->
+      <div id="action-strip">
+        <button class="strip-btn" data-modal="contact">Contact</button>
+        <button class="strip-btn" data-modal="status">Status</button>
+        <button class="strip-btn" data-modal="note">Note</button>
+        <button class="strip-btn" data-modal="daviteq">DAVITEQ</button>
+        <button class="strip-btn" data-modal="document">Document</button>
+        <div style="flex:1"></div>
+        <button class="strip-btn confirm-btn" id="btn-confirm">Xác nhận</button>
+      </div>
+
+      <!-- Process tracker -->
+      <div id="process-bar">
+        <div class="process-steps">
+          <div class="process-step"></div>
+          <div class="process-step"></div>
+          <div class="process-step"></div>
+          <div class="process-step"></div>
+          <div class="process-step"></div>
+          <div class="process-step"></div>
+        </div>
+        <div id="hint-text">Quy trình xử lý sự cố đang đợi...</div>
+      </div>
+
+      <!-- Countdown timer -->
+      <div id="timer-bar">
+        <span style="font-size:11px;color:var(--text-muted);">Countdown</span>
+        <div id="countdown-display">⏳ Đang chờ...</div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- CONTACT MODAL -->
+  <div class="modal-overlay" id="contact-modal">
+    <div class="modal">
+      <div class="modal-title">📞 Contact — Cập nhật liên hệ</div>
+
+      <div class="form-group">
+        <label>Tên thiết bị</label>
+        <input type="text" id="contact-device" placeholder="Tự động lấy từ báo cáo...">
+      </div>
+
+      <div class="form-group">
+        <label>Tình trạng thiết bị</label>
+        <select id="contact-status">
+          <option value="Normal">Normal</option>
+          <option value="Warning">Warning</option>
+          <option value="Error">Error</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Processing Results</label>
+        <select id="contact-processing">
+          <option value="Đã xử lý">Đã xử lý</option>
+          <option value="Đang xử lý">Đang xử lý</option>
+          <option value="Chưa xử lý">Chưa xử lý</option>
+          <option value="None" selected>None</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Thời gian khắc phục (bắt đầu — kết thúc)</label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select id="contact-time-start-h" style="flex:1;">
+            <option value="">HH</option>
+            <option value="00">00</option>
+            <option value="01">01</option>
+            <option value="02">02</option>
+            <option value="03">03</option>
+            <option value="04">04</option>
+            <option value="05">05</option>
+            <option value="06">06</option>
+            <option value="07">07</option>
+            <option value="08">08</option>
+            <option value="09">09</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+            <option value="23">23</option>
+          </select>
+          <span style="color:var(--text-muted);font-weight:600;">:</span>
+          <select id="contact-time-start-m" style="flex:1;">
+            <option value="">MM</option>
+            <option value="00">00</option>
+            <option value="01">01</option>
+            <option value="02">02</option>
+            <option value="03">03</option>
+            <option value="04">04</option>
+            <option value="05">05</option>
+            <option value="06">06</option>
+            <option value="07">07</option>
+            <option value="08">08</option>
+            <option value="09">09</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+            <option value="23">23</option>
+            <option value="24">24</option>
+            <option value="25">25</option>
+            <option value="26">26</option>
+            <option value="27">27</option>
+            <option value="28">28</option>
+            <option value="29">29</option>
+            <option value="30">30</option>
+            <option value="31">31</option>
+            <option value="32">32</option>
+            <option value="33">33</option>
+            <option value="34">34</option>
+            <option value="35">35</option>
+            <option value="36">36</option>
+            <option value="37">37</option>
+            <option value="38">38</option>
+            <option value="39">39</option>
+            <option value="40">40</option>
+            <option value="41">41</option>
+            <option value="42">42</option>
+            <option value="43">43</option>
+            <option value="44">44</option>
+            <option value="45">45</option>
+            <option value="46">46</option>
+            <option value="47">47</option>
+            <option value="48">48</option>
+            <option value="49">49</option>
+            <option value="50">50</option>
+            <option value="51">51</option>
+            <option value="52">52</option>
+            <option value="53">53</option>
+            <option value="54">54</option>
+            <option value="55">55</option>
+            <option value="56">56</option>
+            <option value="57">57</option>
+            <option value="58">58</option>
+            <option value="59">59</option>
+          </select>
+          <span style="color:var(--text-muted);padding:0 4px;">—</span>
+          <select id="contact-time-end-h" style="flex:1;">
+            <option value="">HH</option>
+            <option value="00">00</option>
+            <option value="01">01</option>
+            <option value="02">02</option>
+            <option value="03">03</option>
+            <option value="04">04</option>
+            <option value="05">05</option>
+            <option value="06">06</option>
+            <option value="07">07</option>
+            <option value="08">08</option>
+            <option value="09">09</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+            <option value="23">23</option>
+          </select>
+          <span style="color:var(--text-muted);font-weight:600;">:</span>
+          <select id="contact-time-end-m" style="flex:1;">
+            <option value="">MM</option>
+            <option value="00">00</option>
+            <option value="01">01</option>
+            <option value="02">02</option>
+            <option value="03">03</option>
+            <option value="04">04</option>
+            <option value="05">05</option>
+            <option value="06">06</option>
+            <option value="07">07</option>
+            <option value="08">08</option>
+            <option value="09">09</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+            <option value="23">23</option>
+            <option value="24">24</option>
+            <option value="25">25</option>
+            <option value="26">26</option>
+            <option value="27">27</option>
+            <option value="28">28</option>
+            <option value="29">29</option>
+            <option value="30">30</option>
+            <option value="31">31</option>
+            <option value="32">32</option>
+            <option value="33">33</option>
+            <option value="34">34</option>
+            <option value="35">35</option>
+            <option value="36">36</option>
+            <option value="37">37</option>
+            <option value="38">38</option>
+            <option value="39">39</option>
+            <option value="40">40</option>
+            <option value="41">41</option>
+            <option value="42">42</option>
+            <option value="43">43</option>
+            <option value="44">44</option>
+            <option value="45">45</option>
+            <option value="46">46</option>
+            <option value="47">47</option>
+            <option value="48">48</option>
+            <option value="49">49</option>
+            <option value="50">50</option>
+            <option value="51">51</option>
+            <option value="52">52</option>
+            <option value="53">53</option>
+            <option value="54">54</option>
+            <option value="55">55</option>
+            <option value="56">56</option>
+            <option value="57">57</option>
+            <option value="58">58</option>
+            <option value="59">59</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary btn-close-modal">Hủy</button>
+        <button class="btn-primary" id="contact-submit">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS MODAL -->
+  <div class="modal-overlay" id="status-modal">
+    <div class="modal">
+      <div class="modal-title">📊 Status — Cập nhật tình trạng</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>Processing Results</label>
+          <select id="status-processing" class="status-field">
+            <option value="Đã xử lý">Đã xử lý</option>
+            <option value="Đang xử lý">Đang xử lý</option>
+            <option value="Chưa xử lý">Chưa xử lý</option>
+            <option value="None">None</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Week</label>
+          <select id="status-week" class="status-field">
+            <option value="Week 1">Week 1</option>
+            <option value="Week 2">Week 2</option>
+            <option value="Week 3">Week 3</option>
+            <option value="Week 4">Week 4</option>
+            <option value="Week 5">Week 5</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>Tên bộ phận / Site</label>
+          <input type="text" id="status-dept" class="status-field" disabled placeholder="Gõ để tìm..."
+            list="dept-options">
+          <datalist id="dept-options">
+            <!-- Populated by JS -->
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Tên thiết bị</label>
+          <input type="text" id="status-device" class="status-field" disabled placeholder="Gõ để tìm..."
+            list="device-options">
+          <datalist id="device-options">
+            <!-- Populated by JS -->
+          </datalist>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>Người phụ trách (SOL PIC)</label>
+          <input type="text" id="status-pic" class="status-field" disabled placeholder="Gõ để tìm..."
+            list="pic-options">
+          <datalist id="pic-options">
+            <!-- Populated by JS -->
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Alarm Type</label>
+          <select id="status-alarm-type" class="status-field" disabled>
+            <option value="">-- Chọn --</option>
+            <option value="Operation">Operation</option>
+            <option value="Device">Device</option>
+            <option value="Cons &amp; Maintenance">Cons &amp; Maintenance</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group">
+          <label>Thời gian bắt đầu</label>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+            <input type="date" id="status-start-date" class="status-field" disabled style="flex:1;min-width:110px;">
+            <select id="status-start-h" class="status-field" disabled style="flex:0 0 60px;">
+              <option value="">HH</option>
+              <option value="00">00</option>
+              <option value="01">01</option>
+              <option value="02">02</option>
+              <option value="03">03</option>
+              <option value="04">04</option>
+              <option value="05">05</option>
+              <option value="06">06</option>
+              <option value="07">07</option>
+              <option value="08">08</option>
+              <option value="09">09</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+              <option value="13">13</option>
+              <option value="14">14</option>
+              <option value="15">15</option>
+              <option value="16">16</option>
+              <option value="17">17</option>
+              <option value="18">18</option>
+              <option value="19">19</option>
+              <option value="20">20</option>
+              <option value="21">21</option>
+              <option value="22">22</option>
+              <option value="23">23</option>
+            </select>
+            <span style="color:var(--text-muted);font-weight:600;">:</span>
+            <select id="status-start-m" class="status-field" disabled style="flex:0 0 60px;">
+              <option value="">MM</option>
+              <option value="00">00</option>
+              <option value="01">01</option>
+              <option value="02">02</option>
+              <option value="03">03</option>
+              <option value="04">04</option>
+              <option value="05">05</option>
+              <option value="06">06</option>
+              <option value="07">07</option>
+              <option value="08">08</option>
+              <option value="09">09</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+              <option value="13">13</option>
+              <option value="14">14</option>
+              <option value="15">15</option>
+              <option value="16">16</option>
+              <option value="17">17</option>
+              <option value="18">18</option>
+              <option value="19">19</option>
+              <option value="20">20</option>
+              <option value="21">21</option>
+              <option value="22">22</option>
+              <option value="23">23</option>
+              <option value="24">24</option>
+              <option value="25">25</option>
+              <option value="26">26</option>
+              <option value="27">27</option>
+              <option value="28">28</option>
+              <option value="29">29</option>
+              <option value="30">30</option>
+              <option value="31">31</option>
+              <option value="32">32</option>
+              <option value="33">33</option>
+              <option value="34">34</option>
+              <option value="35">35</option>
+              <option value="36">36</option>
+              <option value="37">37</option>
+              <option value="38">38</option>
+              <option value="39">39</option>
+              <option value="40">40</option>
+              <option value="41">41</option>
+              <option value="42">42</option>
+              <option value="43">43</option>
+              <option value="44">44</option>
+              <option value="45">45</option>
+              <option value="46">46</option>
+              <option value="47">47</option>
+              <option value="48">48</option>
+              <option value="49">49</option>
+              <option value="50">50</option>
+              <option value="51">51</option>
+              <option value="52">52</option>
+              <option value="53">53</option>
+              <option value="54">54</option>
+              <option value="55">55</option>
+              <option value="56">56</option>
+              <option value="57">57</option>
+              <option value="58">58</option>
+              <option value="59">59</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Thời gian kết thúc</label>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+            <input type="date" id="status-end-date" class="status-field" disabled style="flex:1;min-width:110px;">
+            <select id="status-end-h" class="status-field" disabled style="flex:0 0 60px;">
+              <option value="">HH</option>
+              <option value="00">00</option>
+              <option value="01">01</option>
+              <option value="02">02</option>
+              <option value="03">03</option>
+              <option value="04">04</option>
+              <option value="05">05</option>
+              <option value="06">06</option>
+              <option value="07">07</option>
+              <option value="08">08</option>
+              <option value="09">09</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+              <option value="13">13</option>
+              <option value="14">14</option>
+              <option value="15">15</option>
+              <option value="16">16</option>
+              <option value="17">17</option>
+              <option value="18">18</option>
+              <option value="19">19</option>
+              <option value="20">20</option>
+              <option value="21">21</option>
+              <option value="22">22</option>
+              <option value="23">23</option>
+            </select>
+            <span style="color:var(--text-muted);font-weight:600;">:</span>
+            <select id="status-end-m" class="status-field" disabled style="flex:0 0 60px;">
+              <option value="">MM</option>
+              <option value="00">00</option>
+              <option value="01">01</option>
+              <option value="02">02</option>
+              <option value="03">03</option>
+              <option value="04">04</option>
+              <option value="05">05</option>
+              <option value="06">06</option>
+              <option value="07">07</option>
+              <option value="08">08</option>
+              <option value="09">09</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+              <option value="13">13</option>
+              <option value="14">14</option>
+              <option value="15">15</option>
+              <option value="16">16</option>
+              <option value="17">17</option>
+              <option value="18">18</option>
+              <option value="19">19</option>
+              <option value="20">20</option>
+              <option value="21">21</option>
+              <option value="22">22</option>
+              <option value="23">23</option>
+              <option value="24">24</option>
+              <option value="25">25</option>
+              <option value="26">26</option>
+              <option value="27">27</option>
+              <option value="28">28</option>
+              <option value="29">29</option>
+              <option value="30">30</option>
+              <option value="31">31</option>
+              <option value="32">32</option>
+              <option value="33">33</option>
+              <option value="34">34</option>
+              <option value="35">35</option>
+              <option value="36">36</option>
+              <option value="37">37</option>
+              <option value="38">38</option>
+              <option value="39">39</option>
+              <option value="40">40</option>
+              <option value="41">41</option>
+              <option value="42">42</option>
+              <option value="43">43</option>
+              <option value="44">44</option>
+              <option value="45">45</option>
+              <option value="46">46</option>
+              <option value="47">47</option>
+              <option value="48">48</option>
+              <option value="49">49</option>
+              <option value="50">50</option>
+              <option value="51">51</option>
+              <option value="52">52</option>
+              <option value="53">53</option>
+              <option value="54">54</option>
+              <option value="55">55</option>
+              <option value="56">56</option>
+              <option value="57">57</option>
+              <option value="58">58</option>
+              <option value="59">59</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:-4px;">
+        <div class="form-group">
+          <label>Status</label>
+          <select id="status-done" class="status-field" disabled>
+            <option value="Done">Done</option>
+            <option value="Not Yet">Not Yet</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Alarm Level</label>
+          <select id="status-alarm-level" class="status-field" disabled>
+            <option value="">-- Chọn --</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Mô tả (Reason)</label>
+        <textarea id="status-desc" class="status-field" disabled
+          placeholder="Mô tả chi tiết kết quả xử lý..."></textarea>
+      </div>
+
+      <div id="status-excel-notice"
+        style="display:none;font-size:12px;color:var(--green);padding:6px 10px;background:var(--green-dim);border-radius:4px;">
+        ✓ Đang ghi vào Excel...
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary btn-close-modal">Hủy</button>
+        <button class="btn-primary" id="status-submit">OK — Lưu &amp; Ghi Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+     MODAL: NOTE
+═══════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="note-modal">
+    <div class="modal">
+      <div class="modal-title">📝 Note — Quản lý ghi chú & nhắc nhở</div>
+
+      <div class="note-tabs">
+        <button class="note-tab active" data-tab="create">Tạo Note</button>
+        <button class="note-tab" data-tab="view">Xem Note</button>
+        <button class="note-tab" data-tab="notif">Biểu mẫu thông báo</button>
+      </div>
+
+      <!-- Panel: Tạo Note -->
+      <div class="note-panel" id="note-panel-create">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Từ khóa</label>
+            <input type="text" id="note-keyword" placeholder="VD: Họp tuần">
+          </div>
+          <div class="form-group">
+            <label>Giờ báo (HH:MM, nhiều giờ cách nhau bởi dấu phẩy)</label>
+            <input type="text" id="note-times" placeholder="VD: 08:00, 14:30">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Nội dung</label>
+          <textarea id="note-content" placeholder="Nội dung nhắc nhở..."></textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Ngày báo</label>
+            <input type="text" id="note-days" placeholder="1,5,15 hoặc All">
+          </div>
+          <div class="form-group">
+            <label>Tháng báo</label>
+            <input type="text" id="note-months" placeholder="1,6,12 hoặc All">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Số lần nhắc</label>
+            <select id="note-repeat-count">
+              <option value="1">1 lần</option>
+              <option value="2">2 lần</option>
+              <option value="3">3 lần</option>
+              <option value="4">4 lần</option>
+              <option value="5">5 lần</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Cách nhau (phút)</label>
+            <select id="note-repeat-interval">
+              <option value="5">5 phút</option>
+              <option value="10">10 phút</option>
+              <option value="15">15 phút</option>
+              <option value="30">30 phút</option>
+              <option value="60">60 phút</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="border:none;padding-top:0;">
+          <button class="btn-secondary btn-close-modal">Đóng</button>
+          <button class="btn-primary" id="note-create-submit">Thêm Nhắc</button>
+        </div>
+      </div>
+
+      <!-- Panel: Xem Note -->
+      <div class="note-panel hidden" id="note-panel-view">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <input type="text" id="note-search" placeholder="Tìm kiếm..."
+            style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--text-primary);font-size:13px;outline:none;">
+        </div>
+        <div class="note-table-wrap" style="max-height:360px;overflow-y:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Từ khóa</th>
+                <th>Nội dung</th>
+                <th>Giờ nhắc</th>
+                <th>Ngày</th>
+                <th>Tháng</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="notes-tbody"></tbody>
+          </table>
+        </div>
+        <div class="modal-footer" style="border:none;padding-top:8px;">
+          <button class="btn-secondary btn-close-modal">Đóng</button>
+        </div>
+      </div>
+
+      <!-- Panel: Biểu mẫu thông báo -->
+      <div class="note-panel hidden" id="note-panel-notif">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Site</label>
+            <input type="text" id="notif-site" placeholder="VD: ATQB">
+          </div>
+          <div class="form-group">
+            <label>Thiết bị</label>
+            <input type="text" id="notif-devices" placeholder="VD: Gateway, Camera">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Mô tả</label>
+          <textarea id="notif-description" placeholder="Mô tả sự cố hoặc thông báo..."></textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Giờ bắt đầu</label>
+            <input type="time" id="notif-start-time">
+          </div>
+          <div class="form-group">
+            <label>Ngày bắt đầu</label>
+            <input type="date" id="notif-start-date">
+          </div>
+          <div class="form-group">
+            <label>Giờ kết thúc</label>
+            <input type="time" id="notif-end-time">
+          </div>
+          <div class="form-group">
+            <label>Ngày kết thúc</label>
+            <input type="date" id="notif-end-date">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Ghi chú thêm</label>
+          <input type="text" id="notif-note" placeholder="Ghi chú tùy chọn...">
+        </div>
+
+        <div class="modal-footer" style="border:none;padding-top:0;">
+          <button class="btn-secondary btn-close-modal">Hủy</button>
+          <button class="btn-primary" id="notif-submit">Tạo thông báo</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+     MODAL: DAVITEQ IMAGE VIEWER
+═══════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="daviteq-modal">
+    <div class="modal">
+      <div class="modal-title">🖼️ DAVITEQ — Kho ảnh thiết bị</div>
+      <div class="image-viewer-layout">
+        <div class="img-cat-list" id="img-cat-list">
+          <span class="spinner"></span>
+        </div>
+        <div class="img-sub-list" id="img-sub-list"></div>
+        <div class="img-grid" id="img-grid">
+          <span style="color:var(--text-muted);font-size:12px;">Chọn category và site...</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary btn-close-modal">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+     MODAL: DOCUMENTARY VIEWER
+═══════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="document-modal">
+    <div class="modal">
+      <div class="modal-title">📁 Document — Kho tài liệu RMC</div>
+
+      <div class="doc-search-row">
+        <input type="text" id="doc-search" placeholder="Tìm tài liệu...">
+        <button class="topbar-btn" id="doc-refresh">🔄 Làm mới</button>
+      </div>
+
+      <div class="doc-mode-row">
+        <button class="topbar-btn doc-mode-btn active" data-mode="name">Theo tên</button>
+        <button class="topbar-btn doc-mode-btn" data-mode="type">Theo loại</button>
+        <button class="topbar-btn doc-mode-btn" data-mode="number">Theo STT</button>
+      </div>
+
+      <div class="note-table-wrap" style="max-height:400px;overflow-y:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Loại</th>
+              <th>Tên</th>
+              <th>Tải về</th>
+              <th>Trạng thái</th>
+            </tr>
+          </thead>
+          <tbody id="docs-tbody">
+            <tr>
+              <td colspan="5" style="text-align:center;color:var(--text-muted);">Chưa tải dữ liệu...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary btn-close-modal">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+     MODAL: ADMIN USER MANAGEMENT (FULLSCREEN V2 REDESIGN)
+═══════════════════════════════════════════════════════ -->
+  <style>
+    /* Admin Fullscreen Overlay */
+    .admin-fullscreen-wrapper {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #f3f4f6;
+      z-index: 9999;
+      padding: 48px 60px;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      overflow-y: auto;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .admin-fullscreen-wrapper.open {
+      display: block;
+      opacity: 1;
+    }
+
+    /* Header */
+    .admin-header {
+      margin-bottom: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .admin-title {
+      font-size: 30px;
+      font-weight: 700;
+      color: #111827;
+      margin: 0 0 4px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .admin-subtitle {
+      font-size: 14px;
+      color: #9ca3af;
+      font-weight: 400;
+      margin: 0;
+    }
+
+    .admin-close-btn {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-weight: 600;
+      font-size: 14px;
+      color: #374151;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      transition: all 0.15s ease;
+    }
+
+    .admin-close-btn:hover {
+      background: #f9fafb;
+    }
+
+    /* Tab Bar */
+    .admin-tab-container {
+      display: flex;
+      background: #e5e7eb;
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 24px;
+    }
+
+    .admin-v2-tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px 16px;
+      font-size: 14px;
+      background: transparent;
+      border: none;
+      color: #6b7280;
+      font-weight: 400;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .admin-v2-tab.active {
+      background: #ffffff;
+      border-radius: 9px;
+      font-weight: 600;
+      color: #111827;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Card */
+    .admin-card {
+      background: #ffffff;
+      border-radius: 16px;
+      border: 1px solid #e5e7eb;
+      padding: 20px 24px 24px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Search Bar */
+    .admin-search-wrapper {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    .admin-search-wrapper svg {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #9ca3af;
+    }
+
+    .admin-search-input {
+      width: 100%;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 9px 14px 9px 40px;
+      font-size: 14px;
+      color: #374151;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .admin-search-input:focus {
+      border-color: #d1d5db;
+    }
+
+    .admin-search-input::placeholder {
+      color: #9ca3af;
+    }
+
+    /* Table */
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .admin-table th {
+      text-align: left;
+      font-size: 13px;
+      font-weight: 500;
+      color: #9ca3af;
+      padding: 0 12px 12px;
+      border-bottom: 1px solid #f3f4f6;
+      background: transparent;
+    }
+
+    .admin-table td {
+      padding: 14px 12px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .admin-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .admin-user-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .admin-user-email {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: #374151;
+    }
+
+    .admin-provider-badge {
+      display: inline-block;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 3px 10px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #374151;
+    }
+
+    .admin-date-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: #374151;
+    }
+
+    /* Action Buttons */
+    .admin-action-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-approve {
+      background: #16a34a;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .btn-approve:hover {
+      background: #15803d;
+    }
+
+    .btn-reject {
+      background: #ffffff;
+      color: #dc2626;
+      border: 1.5px solid #fca5a5;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .btn-reject:hover {
+      background: #fee2e2;
+    }
+
+    /* Settings Toggle */
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+
+    .setting-desc {
+      font-size: 13px;
+      color: #9ca3af;
+    }
+
+    .toggle-switch {
+      width: 44px;
+      height: 24px;
+      border-radius: 12px;
+      background: #d1d5db;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .toggle-switch.on {
+      background: #16a34a;
+    }
+
+    .toggle-knob {
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      transition: left 0.2s ease;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    .toggle-switch.on .toggle-knob {
+      left: 23px;
+    }
+
+    /* Hidden Panels */
+    .admin-panel.hidden {
+      display: none;
+    }
+
+    /* Layout for old sections inside Settings */
+    .settings-section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #111827;
+      margin: 32px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+  </style>
+
+  <div class="admin-fullscreen-wrapper" id="admin-modal">
+    <div class="admin-header">
+      <div>
+        <h1 class="admin-title">👑 Bảng điều khiển Admin</h1>
+        <p class="admin-subtitle">Quản lý người dùng, thiết lập hệ thống và theo dõi hoạt động</p>
+      </div>
+      <button class="admin-close-btn btn-close-modal">✕ Đóng</button>
+    </div>
+
+    <div class="admin-tab-container" id="admin-tabs">
+      <button class="admin-v2-tab active" data-tab="users">Quản lý User</button>
+      <button class="admin-v2-tab" data-tab="system">Cấu hình Chung</button>
+      <button class="admin-v2-tab" data-tab="devices">Quản lý Thiết bị</button>
+      <button class="admin-v2-tab" data-tab="pics">Quản lý PIC</button>
+    </div>
+
+    <!-- Panel 1: Users (Quản lý User) -->
+    <div class="admin-panel" id="admin-panel-users">
+      <div class="admin-card" style="margin-bottom: 24px;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 16px; color: #111827;">Thêm user trực tiếp</h3>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <input type="email" id="admin-new-email" class="admin-search-input" placeholder="Email người dùng"
+            style="flex: 1;">
+          <input type="text" id="admin-new-name" class="admin-search-input" placeholder="Tên hiển thị" style="flex: 1;">
+          <button id="admin-add-user" class="btn-primary"
+            style="padding: 9px 20px; border-radius: 8px; background: #16a34a; color: white; border: none; cursor: pointer;">Thêm</button>
+        </div>
+      </div>
+      <div class="admin-card">
+        <div class="admin-search-wrapper">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" class="admin-search-input" id="admin-user-search"
+            placeholder="Tìm kiếm theo tên hoặc email...">
+        </div>
+
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>TÊN NGƯỜI DÙNG</th>
+              <th>EMAIL</th>
+              <th>VAI TRÒ</th>
+              <th>PHƯƠNG THỨC ĐĂNG NHẬP</th>
+              <th>NGÀY TẠO</th>
+              <th style="text-align:right;">HÀNH ĐỘNG</th>
+            </tr>
+          </thead>
+          <tbody id="admin-users-tbody">
+            <tr>
+              <td colspan="6" style="text-align:center;color:#9ca3af;padding:30px;">Đang tải dữ liệu...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 2: System (Cấu hình Chung) -->
+    <div class="admin-panel hidden" id="admin-panel-system">
+      <div class="admin-card">
+        <div class="settings-section-title" style="margin-top: 0;">☁️ Đồng bộ cấu hình hệ thống (Cloud Sync)</div>
+        <div style="display:flex; gap:12px; margin-bottom: 24px;">
+          <button class="topbar-btn" id="admin-push-cloud"
+            style="border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 8px 16px;">☁ Tải lên
+            OneDrive</button>
+          <button class="topbar-btn" id="admin-sync-cloud"
+            style="border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 8px 16px;">⟳ Tải từ
+            OneDrive</button>
+        </div>
+
+        <div class="settings-section-title">Quản lý Site & OneDrive</div>
+        <div class="form-grid"
+          style="display:grid; grid-template-columns: 120px 2fr 1fr 2fr 100px; gap:12px; align-items: end;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-family:system-ui; font-size: 13px;">Nhóm</label>
+            <select id="admin-site-group"
+              style="border: 1px solid #e5e7eb; border-radius:8px; width:100%; padding:9px;">
+              <option value="AEONMALL">AEONMALL</option>
+              <option value="MAXVALUE">MAXVALUE</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-family:system-ui; font-size: 13px;">Tên Site (Đầy đủ)</label>
+            <input type="text" id="admin-site-name" placeholder="VD: AEON Ha Dong"
+              style="border: 1px solid #e5e7eb; border-radius:8px; width:100%; padding:9px;">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-family:system-ui; font-size: 13px;">Site Code</label>
+            <input type="text" id="admin-site-short" placeholder="VD: AVG"
+              style="border: 1px solid #e5e7eb; border-radius:8px; width:100%; padding:9px;">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label style="font-family:system-ui; font-size: 13px;">OneDrive Path</label>
+            <input type="text" id="admin-site-path" placeholder="REPORT FORM/..."
+              style="border: 1px solid #e5e7eb; border-radius:8px; width:100%; padding:9px;">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <button class="btn-approve" id="admin-add-site"
+              style="width:100%; height:37px; justify-content:center; padding:0;">Thêm</button>
+          </div>
+        </div>
+        <div class="note-table-wrap"
+          style="max-height:250px;overflow-y:auto; margin-top: 16px; border-color:#e5e7eb; border-radius:12px;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Nhóm</th>
+                <th>Tên Site</th>
+                <th>OneDrive Path</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="admin-sites-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="settings-section-title">Quản lý nội dung báo cáo mẫu (OneDrive)</div>
+        <div style="display:flex; gap: 12px; margin-bottom: 16px;">
+          <select id="admin-tpl-site-select"
+            style="border: 1px solid #e5e7eb; border-radius:8px; padding:8px; width:150px;"></select>
+          <input type="text" id="admin-tpl-search" placeholder="Tìm kiếm mẫu..."
+            style="border: 1px solid #e5e7eb; border-radius:8px; padding:8px; width:150px;">
+          <input type="text" id="admin-tpl-filename" placeholder="Tên file (VD: ANVL.txt)"
+            style="border: 1px solid #e5e7eb; border-radius:8px; padding:8px; flex:1;">
+          <button class="btn-approve" id="admin-tpl-create" style="width:120px; justify-content:center;">Tạo file
+            mới</button>
+        </div>
+        <div class="note-table-wrap"
+          style="max-height:250px; overflow-y:auto; border-color:#e5e7eb; border-radius:12px;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Tên file (Device)</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="admin-templates-tbody"></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Panel 3: Devices (Quản lý Thiết bị) -->
+    <div class="admin-panel" id="admin-panel-devices" style="display: none;">
+      <div class="admin-card">
+        <div class="settings-section-title">Quản lý Thiết bị</div>
+        <div class="form-grid" style="grid-template-columns: 1fr 150px; gap:12px;">
+          <div class="form-group">
+            <label style="font-family:system-ui;">Tên thiết bị mới</label>
+            <input type="text" id="admin-device-name" placeholder="VD: Power Supply"
+              style="border-color:#e5e7eb; border-radius:8px;">
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;">
+            <button class="btn-approve" id="admin-add-device" style="width:100%; justify-content:center;">Thêm
+              TB</button>
+          </div>
+        </div>
+        <div class="note-table-wrap"
+          style="max-height:250px;overflow-y:auto; margin-top: 16px; border-color:#e5e7eb; border-radius:12px;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Tên thiết bị</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="admin-devices-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 4: PICs (Quản lý PIC) -->
+    <div class="admin-panel" id="admin-panel-pics" style="display: none;">
+      <div class="admin-card">
+        <div class="settings-section-title">Quản lý Người phụ trách (PIC)</div>
+        <div class="form-grid" style="grid-template-columns: 1fr 150px; gap:12px;">
+          <div class="form-group">
+            <label style="font-family:system-ui;">Tên người phụ trách mới</label>
+            <input type="text" id="admin-pic-name" placeholder="VD: Mr. Quang"
+              style="border-color:#e5e7eb; border-radius:8px;">
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;">
+            <button class="btn-approve" id="admin-add-pic" style="width:100%; justify-content:center;">Thêm PIC</button>
+          </div>
+        </div>
+        <div class="note-table-wrap"
+          style="max-height:250px;overflow-y:auto; margin-top: 16px; border-color:#e5e7eb; border-radius:12px;">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Tên PIC</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody id="admin-pics-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+     MODAL: TEMPLATE EDITOR
+     (Large editor for report templates)
+═══════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="tpl-edit-modal">
+    <div class="modal" style="max-width: 800px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-title">📝 Sửa nội dung báo cáo mẫu</div>
+      <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+        <label id="tpl-edit-label" style="font-weight: bold; margin-bottom: 8px;">Tên file: ...</label>
+        <textarea id="tpl-edit-content"
+          style="flex: 1; min-height: 400px; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.5; padding: 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); resize: none;"></textarea>
+      </div>
+      <div class="modal-footer" style="margin-top: 15px;">
+        <button class="btn-secondary btn-close-modal">Hủy</button>
+        <button class="btn-primary" id="tpl-edit-save">Lưu thay đổi trực tiếp lên OneDrive</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="device-auth-modal" class="modal-overlay" style="justify-content:center; align-items:center;">
+    <div class="modal"
+      style="background:var(--bg-panel); border:1px solid var(--border); border-radius:16px; padding:32px; width:90%; max-width:480px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+      <div style="text-align:center; margin-bottom: 24px;">
+        <div style="font-size: 48px; color: #0078d4; margin-bottom: 16px;"><i class="fab fa-microsoft"></i></div>
+        <h3 style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin:0;">Xác thực OneDrive</h3>
+        <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px; line-height: 1.5;">Hệ thống cần quyền
+          truy cập OneDrive để đồng bộ dữ liệu. Vui lòng hoàn tất 2 bước sau:</p>
+      </div>
+
+      <div
+        style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <div style="margin-bottom: 20px;">
+          <div
+            style="font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
+            BƯỚC 1: TRUY CẬP TRANG XÁC THỰC</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="auth-link-input" readonly
+              style="flex:1; background: var(--bg-base); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; font-size: 13px; color: var(--text-primary); outline: none;">
+            <button onclick="window.open(document.getElementById('auth-link-input').value, '_blank')"
+              style="background: #0078d4; color: #fff; border: none; border-radius: 6px; padding: 0 16px; font-weight: 600; cursor: pointer; transition: 0.15s; white-space: nowrap;"><i
+                class="fas fa-external-link-alt" style="margin-right: 6px;"></i>Mở Link</button>
+          </div>
+        </div>
+
+        <div>
+          <div
+            style="font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">
+            BƯỚC 2: NHẬP MÃ BÊN DƯỚI</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="auth-code-input" readonly
+              style="flex:1; background: var(--bg-base); border: 2px dashed var(--border); border-radius: 6px; padding: 10px 12px; font-size: 16px; font-weight: 700; text-align: center; letter-spacing: 4px; color: var(--text-primary); outline: none;">
+            <button onclick="copyToClipboard(document.getElementById('auth-code-input').value)"
+              style="background: var(--bg-panel); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0 16px; font-weight: 600; cursor: pointer; transition: 0.15s; white-space: nowrap;"><i
+                class="far fa-copy" style="margin-right: 6px;"></i>Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="auth-polling-status"
+        style="display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--orange); font-size: 14px; font-weight: 600; padding: 12px; background: rgba(249,115,22,0.1); border-radius: 8px; margin-bottom: 20px;">
+        <span class="spinner"
+          style="width: 16px; height: 16px; border-width: 2px; border-top-color: var(--orange);"></span>
+        Đang chờ bạn thao tác...
+      </div>
+
+      <div class="modal-footer" style="justify-content: center; border-top: none; padding-top: 0;">
+        <button class="btn-secondary btn-close-modal"
+          style="width: 100%; border-radius: 8px; font-weight: 600; padding: 10px;">Hủy bỏ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+     TOAST CONTAINER
+═══════════════════════════════════════════════════════ -->
+  <div id="toast-container"></div>
+
+  <!-- Reminder alert overlay -->
+  <div id="reminder-overlay">
+    <div class="reminder-card">
+      <div class="reminder-icon">🔔</div>
+      <div class="reminder-keyword" id="reminder-keyword"></div>
+      <div class="reminder-content" id="reminder-content"></div>
+      <div class="reminder-time" id="reminder-time"></div>
+      <button class="reminder-close" onclick="closeReminder()">Đã hiểu</button>
+    </div>
+  </div>
+
+
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    // Mobile Sidebar Toggle Logic
+    document.addEventListener("DOMContentLoaded", () => {
+      const btnMenu = document.getElementById('btn-menu');
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+      const btnCloseSidebar = document.getElementById('btn-close-sidebar');
+
+      const closeSidebar = () => {
+        if (sidebar) sidebar.classList.remove('sidebar-open');
+        if (overlay) overlay.classList.remove('active');
+      };
+
+      if (btnMenu && sidebar && overlay) {
+        btnMenu.addEventListener('click', () => {
+          sidebar.classList.add('sidebar-open');
+          overlay.classList.add('active');
+        });
+
+        overlay.addEventListener('click', closeSidebar);
+
+        if (btnCloseSidebar) {
+          btnCloseSidebar.addEventListener('click', closeSidebar);
+        }
+
+        // Close sidebar when a site is clicked
+        const siteList = document.getElementById('site-list');
+        if (siteList) {
+          siteList.addEventListener('click', (e) => {
+            if (e.target.closest('.item-btn') || e.target.closest('.site-btn')) {
+              if (e.target.closest('.item-btn') && window.innerWidth <= 900) {
+                closeSidebar();
+              }
+            }
+          });
+        }
+      }
+    });
+  </script>
+</body>
+
+</html>
