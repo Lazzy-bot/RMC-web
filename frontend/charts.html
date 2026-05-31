@@ -97,6 +97,16 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .chart-scroll-wrap {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
     }
     .chart-panel h3 {
       font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;
@@ -217,6 +227,9 @@
         padding: 16px 12px !important;
         max-height: 85vh;
       }
+      #chart-heatmap {
+        min-width: 680px !important;
+      }
     }
 
     @media (max-width: 480px) {
@@ -234,6 +247,15 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 16px;
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .table-panel .dataTables_wrapper {
+      width: 100% !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
     }
     table.dataTable { border-collapse: collapse !important; color: var(--text-primary) !important; font-size: 12px; }
     table.dataTable thead th { background: var(--bg-card); color: var(--text-muted); border-bottom: 1px solid var(--border); font-size: 11px; cursor: default; }
@@ -413,7 +435,9 @@
 
     <div class="chart-panel col-lg-8">
       <h3>Biểu đồ nhiệt (Giờ vs Thứ)</h3>
-      <div id="chart-heatmap"></div>
+      <div class="chart-scroll-wrap">
+        <div id="chart-heatmap"></div>
+      </div>
     </div>
     <div class="chart-panel col-lg-4">
       <h3>Pareto: Loại thiết bị lỗi</h3>
@@ -435,20 +459,22 @@
   <!-- Detail Table -->
   <div class="table-panel">
     <h3><i class="fas fa-list-ul"></i> Nhật ký dữ liệu chi tiết</h3>
-    <table id="alarm-table" class="display nowrap" style="width:100%">
-      <thead>
-        <tr>
-          <th>Thời gian</th>
-          <th>Cơ sở (Site)</th>
-          <th>Thiết bị</th>
-          <th>Mức độ</th>
-          <th>Thời gian (phút)</th>
-          <th>Trạng thái</th>
-          <th>Người xử lý</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <div style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+      <table id="alarm-table" class="display nowrap" style="width:100%">
+        <thead>
+          <tr>
+            <th>Thời gian</th>
+            <th>Cơ sở (Site)</th>
+            <th>Thiết bị</th>
+            <th>Mức độ</th>
+            <th>Thời gian (phút)</th>
+            <th>Trạng thái</th>
+            <th>Người xử lý</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Modal Chi tiết thiết bị theo Site -->

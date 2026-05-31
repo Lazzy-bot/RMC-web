@@ -84,6 +84,16 @@ export default function DateRangeFilter({ onApply }) {
   const [inputEnd, setInputEnd] = useState('');
   
   const dropdownRef = useRef(null);
+  const [isMobileScreen, setIsMobileScreen] = useState(false);
+
+  useEffect(() => {
+    setIsMobileScreen(window.innerWidth < 600);
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth < 600);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -239,26 +249,58 @@ export default function DateRangeFilter({ onApply }) {
       {/* DROPDOWN PANEL */}
       {open && (
         <div style={{
-          position: 'absolute', top: '100%', right: 0, marginTop: '8px', zIndex: 999,
-          background: '#fff', borderRadius: '14px', border: '1px solid #e5e7eb',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.12)', display: 'flex',
-          overflow: 'hidden', minWidth: '550px'
+          position: 'absolute', 
+          top: '100%', 
+          right: isMobileScreen ? '50%' : 0, 
+          transform: isMobileScreen ? 'translateX(50%)' : 'none',
+          marginTop: '8px', 
+          zIndex: 999,
+          background: '#fff', 
+          borderRadius: '14px', 
+          border: '1px solid #e5e7eb',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.12)', 
+          display: 'flex',
+          flexDirection: isMobileScreen ? 'column' : 'row',
+          overflow: 'hidden', 
+          minWidth: isMobileScreen ? '290px' : '550px',
+          width: isMobileScreen ? '90vw' : 'auto',
+          maxWidth: isMobileScreen ? '340px' : 'none'
         }}>
           
           {/* CỘT TRÁI - PRESET LIST */}
-          <div style={{ width: '180px', borderRight: '1px solid #f3f4f6', padding: '10px 0' }}>
+          <div style={{ 
+            width: isMobileScreen ? '100%' : '180px', 
+            borderRight: isMobileScreen ? 'none' : '1px solid #f3f4f6', 
+            borderBottom: isMobileScreen ? '1px solid #f3f4f6' : 'none',
+            padding: isMobileScreen ? '8px 4px' : '10px 0',
+            display: isMobileScreen ? 'flex' : 'block',
+            overflowX: isMobileScreen ? 'auto' : 'visible',
+            whiteSpace: isMobileScreen ? 'nowrap' : 'normal',
+            scrollbarWidth: 'none', // Ẩn scrollbar trên Firefox
+            msOverflowStyle: 'none'  // Ẩn scrollbar trên IE/Edge
+          }}>
+            {/* Ẩn scrollbar trên Webkit (Chrome/Safari) */}
+            <style dangerouslySetInnerHTML={{__html: `
+              div::-webkit-scrollbar { display: none !important; }
+            `}} />
             {PRESETS.map(p => (
               <div 
                 key={p.id}
                 onClick={() => handlePresetClick(p.id)}
-                onMouseEnter={(e) => { if (preset !== p.id) e.currentTarget.style.background = '#f9fafb' }}
-                onMouseLeave={(e) => { if (preset !== p.id) e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={(e) => { if (preset !== p.id && !isMobileScreen) e.currentTarget.style.background = '#f9fafb' }}
+                onMouseLeave={(e) => { if (preset !== p.id && !isMobileScreen) e.currentTarget.style.background = 'transparent' }}
                 style={{
-                  padding: '9px 20px', fontSize: '14px', cursor: 'pointer',
-                  color: '#111827',
+                  padding: isMobileScreen ? '6px 12px' : '9px 20px', 
+                  fontSize: isMobileScreen ? '12px' : '14px', 
+                  cursor: 'pointer',
+                  color: preset === p.id ? (isMobileScreen ? '#fff' : '#111827') : '#4b5563',
                   fontWeight: preset === p.id ? 700 : 400,
-                  background: preset === p.id ? '#f3f4f6' : 'transparent',
-                  transition: 'background 0.1s'
+                  background: preset === p.id ? (isMobileScreen ? '#111827' : '#f3f4f6') : 'transparent',
+                  borderRadius: isMobileScreen ? '999px' : '0',
+                  margin: isMobileScreen ? '0 4px' : '0',
+                  display: isMobileScreen ? 'inline-block' : 'block',
+                  transition: 'all 0.1s ease',
+                  flexShrink: 0
                 }}
               >
                 {p.label}
@@ -267,10 +309,16 @@ export default function DateRangeFilter({ onApply }) {
           </div>
 
           {/* CỘT PHẢI - CALENDAR */}
-          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', width: '360px' }}>
+          <div style={{ 
+            padding: isMobileScreen ? '12px' : '20px', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
             
             {/* Header điều hướng tháng */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <button 
                 onClick={prevMonth}
                 style={{ width: '28px', height: '28px', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#fff', cursor: 'pointer', color: '#374151', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -281,7 +329,7 @@ export default function DateRangeFilter({ onApply }) {
                 <select 
                   value={month} 
                   onChange={e => setMonth(parseInt(e.target.value))}
-                  style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '14px', fontWeight: 600, color: '#111827', outline: 'none', cursor: 'pointer', background: '#fff' }}
+                  style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 6px', fontSize: isMobileScreen ? '12px' : '14px', fontWeight: 600, color: '#111827', outline: 'none', cursor: 'pointer', background: '#fff' }}
                 >
                   {Array.from({ length: 12 }).map((_, i) => (
                     <option key={i} value={i}>Tháng {i + 1}</option>
@@ -290,7 +338,7 @@ export default function DateRangeFilter({ onApply }) {
                 <select 
                   value={year} 
                   onChange={e => setYear(parseInt(e.target.value))}
-                  style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '14px', fontWeight: 600, color: '#111827', outline: 'none', cursor: 'pointer', background: '#fff' }}
+                  style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 6px', fontSize: isMobileScreen ? '12px' : '14px', fontWeight: 600, color: '#111827', outline: 'none', cursor: 'pointer', background: '#fff' }}
                 >
                   {Array.from({ length: 21 }).map((_, i) => {
                     const y = new Date().getFullYear() - 10 + i;
@@ -307,9 +355,9 @@ export default function DateRangeFilter({ onApply }) {
             </div>
 
             {/* Header ngày trong tuần */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '6px' }}>
               {['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map(d => (
-                <div key={d} style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 500, textAlign: 'center' }}>{d}</div>
+                <div key={d} style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 500, textAlign: 'center' }}>{d}</div>
               ))}
             </div>
 
@@ -352,8 +400,10 @@ export default function DateRangeFilter({ onApply }) {
                     onClick={() => handleDayClick(d)}
                     onMouseEnter={() => handleDayHover(d)}
                     style={{
-                      width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '14px', cursor: 'pointer',
+                      width: isMobileScreen ? '28px' : '34px', 
+                      height: isMobileScreen ? '28px' : '34px', 
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: isMobileScreen ? '12px' : '14px', cursor: 'pointer',
                       background: bg, color: color, borderRadius: br, fontWeight: fw,
                       margin: '0 auto'
                     }}
@@ -365,13 +415,32 @@ export default function DateRangeFilter({ onApply }) {
             </div>
 
             {/* INPUT NGÀY VÀ NÚT ÁP DỤNG */}
-            <div style={{ display: 'flex', alignItems: 'center', marginTop: '20px', gap: '8px', flexWrap: 'nowrap' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              marginTop: '16px', 
+              gap: '6px', 
+              flexWrap: 'nowrap',
+              justifyContent: 'space-between',
+              width: '100%'
+            }}>
               <input 
                 value={inputStart}
                 onChange={e => setInputStart(e.target.value)}
                 onBlur={handleInputStartBlur}
                 placeholder="dd/mm/yyyy"
-                style={{ flex: '1 1 auto', minWidth: '80px', maxWidth: '105px', border: '1.5px solid #e5e7eb', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', textAlign: 'center', outline: 'none' }}
+                style={{ 
+                  flex: '1 1 auto', 
+                  minWidth: '60px', 
+                  maxWidth: isMobileScreen ? '85px' : '105px', 
+                  border: '1.5px solid #e5e7eb', 
+                  borderRadius: '8px', 
+                  padding: isMobileScreen ? '6px 8px' : '8px 10px', 
+                  fontSize: '12px', 
+                  textAlign: 'center', 
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
               />
               <span style={{ color: '#9ca3af', flexShrink: 0 }}>-</span>
               <input 
@@ -379,16 +448,35 @@ export default function DateRangeFilter({ onApply }) {
                 onChange={e => setInputEnd(e.target.value)}
                 onBlur={handleInputEndBlur}
                 placeholder="dd/mm/yyyy"
-                style={{ flex: '1 1 auto', minWidth: '80px', maxWidth: '105px', border: '1.5px solid #e5e7eb', borderRadius: '8px', padding: '8px 10px', fontSize: '13px', textAlign: 'center', outline: 'none' }}
+                style={{ 
+                  flex: '1 1 auto', 
+                  minWidth: '60px', 
+                  maxWidth: isMobileScreen ? '85px' : '105px', 
+                  border: '1.5px solid #e5e7eb', 
+                  borderRadius: '8px', 
+                  padding: isMobileScreen ? '6px 8px' : '8px 10px', 
+                  fontSize: '12px', 
+                  textAlign: 'center', 
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
               />
               <button 
                 onClick={handleApply}
-                onMouseEnter={e => e.currentTarget.style.background = '#374151'}
-                onMouseLeave={e => e.currentTarget.style.background = '#111827'}
+                onMouseEnter={e => { if(!isMobileScreen) e.currentTarget.style.background = '#374151' }}
+                onMouseLeave={e => { if(!isMobileScreen) e.currentTarget.style.background = '#111827' }}
                 style={{
-                  flexShrink: 0, marginLeft: 'auto', background: '#111827', color: '#fff', border: 'none',
-                  borderRadius: '8px', padding: '9px 16px', fontSize: '14px', fontWeight: 600,
-                  cursor: 'pointer', transition: 'background 0.15s', whiteSpace: 'nowrap'
+                  flexShrink: 0, 
+                  background: '#111827', 
+                  color: '#fff', 
+                  border: 'none',
+                  borderRadius: '8px', 
+                  padding: isMobileScreen ? '8px 12px' : '9px 16px', 
+                  fontSize: '12px', 
+                  fontWeight: 600,
+                  cursor: 'pointer', 
+                  transition: 'background 0.15s', 
+                  whiteSpace: 'nowrap'
                 }}
               >
                 Áp dụng
