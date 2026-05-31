@@ -185,6 +185,47 @@ SITE_KEY_MAP = {
 }
 
 # ============================================================
+# Rate Limiting Configuration
+# Tất cả giá trị đọc từ .env, có fallback mặc định hợp lý.
+# Đặt RATE_LIMIT_ENABLED=false để tắt hoàn toàn (dùng khi debug).
+# ============================================================
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+
+# Login / Brute-force protection (per IP)
+RATE_LIMIT_LOGIN_MAX    = int(os.getenv("RATE_LIMIT_LOGIN_MAX",    "5"))    # 5 lần/60s
+RATE_LIMIT_LOGIN_PERIOD = int(os.getenv("RATE_LIMIT_LOGIN_PERIOD", "60"))   # window 60s
+RATE_LIMIT_LOGIN_BLOCK  = int(os.getenv("RATE_LIMIT_LOGIN_BLOCK",  "300"))  # block 5 phút
+
+# General API — Global (per IP)
+RATE_LIMIT_API_MAX      = int(os.getenv("RATE_LIMIT_API_MAX",    "100"))   # 100 req/60s
+RATE_LIMIT_API_PERIOD   = int(os.getenv("RATE_LIMIT_API_PERIOD", "60"))    # window 60s
+RATE_LIMIT_API_BLOCK    = int(os.getenv("RATE_LIMIT_API_BLOCK",  "60"))    # block 60s
+
+# General API — Per authenticated user
+RATE_LIMIT_USER_MAX     = int(os.getenv("RATE_LIMIT_USER_MAX",   "200"))   # 200 req/60s
+
+# Heavy / expensive operations (per user)
+RATE_LIMIT_HEAVY_MAX    = int(os.getenv("RATE_LIMIT_HEAVY_MAX",    "10"))   # 10 req/60s
+RATE_LIMIT_HEAVY_PERIOD = int(os.getenv("RATE_LIMIT_HEAVY_PERIOD", "60"))
+RATE_LIMIT_HEAVY_BLOCK  = int(os.getenv("RATE_LIMIT_HEAVY_BLOCK",  "120"))  # block 2 phút
+
+# Slack spam protection (per user)
+RATE_LIMIT_SLACK_MAX    = int(os.getenv("RATE_LIMIT_SLACK_MAX",    "5"))    # 5 msg/60s
+RATE_LIMIT_SLACK_PERIOD = int(os.getenv("RATE_LIMIT_SLACK_PERIOD", "60"))
+RATE_LIMIT_SLACK_BLOCK  = int(os.getenv("RATE_LIMIT_SLACK_BLOCK",  "120"))
+
+# OneDrive sync trigger (per IP) — rất tốn kém
+RATE_LIMIT_SYNC_MAX     = int(os.getenv("RATE_LIMIT_SYNC_MAX",    "3"))    # 3 lần/5 phút
+RATE_LIMIT_SYNC_PERIOD  = int(os.getenv("RATE_LIMIT_SYNC_PERIOD", "300"))  # window 5 phút
+RATE_LIMIT_SYNC_BLOCK   = int(os.getenv("RATE_LIMIT_SYNC_BLOCK",  "600"))  # block 10 phút
+
+# Admin endpoints (per IP)
+RATE_LIMIT_ADMIN_MAX    = int(os.getenv("RATE_LIMIT_ADMIN_MAX",    "30"))   # 30 req/60s
+RATE_LIMIT_ADMIN_PERIOD = int(os.getenv("RATE_LIMIT_ADMIN_PERIOD", "60"))
+RATE_LIMIT_ADMIN_BLOCK  = int(os.getenv("RATE_LIMIT_ADMIN_BLOCK",  "120"))
+
+
+# ============================================================
 # Create all local directories on import
 # ============================================================
 for _dir in [

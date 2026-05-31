@@ -353,8 +353,67 @@ def push_config_to_cloud():
                 
         threading.Thread(target=bg_push).start()
 
+
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": f"Lỗi upload: {str(e)}"}), 500
 
 
+# ---------------------------------------------------------------------------
+# Rate Limiting — Monitor & Control
+# ---------------------------------------------------------------------------
+
+@admin_mgmt_bp.get("/rate-limit/stats")
+def get_rate_limit_stats():
+    """
+    Trả về thống kê rate limiting hiện tại của tất cả limiters.
+    Chỉ admin được phép truy cập.
+    """
+    if not check_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from rate_limiter import ALL_LIMITERS
+    from config import RATE_LIMIT_ENABLED
+
+    stats = {
+        "enabled": RATE_LIMIT_ENABLED,
+        "limiters": [lim.get_stats() for lim in ALL_LIMITERS],
+    }
+    return jsonify(stats)
+
+
+@admin_mgmt_bp.post("/rate-limit/reset")
+def reset_rate_limit():
+    """
+    Reset rate limit counter cho một IP hoặc user cụ thể.
+    Body: { "key": "192.168.1.1", "limiter": "login" }
+    Nếu không truyền "limiter", reset tất cả limiters cho key đó.
+
+    Dùng khi:
+    - User bị block nhầm (false positive)
+    - Cần unblock IP sau khi kiểm tra
+    """
+    if not check_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+
+    body    = request.json or {}
+    key     = body.get("key", "").strip()
+    limiter_name = body.get("limiter", "").strip().lower()
+
+    if not key:
+        return jsonify({"error": "Missing 'key' (IP address or user email)"}), 400
+
+    from rate_limiter import ALL_LIMITERS
+
+    reset_count = 0
+    for lim in ALL_LIMITERS:
+        if not limiter_name or lim.name == limiter_name:
+            lim.reset_key(key)
+            reset_count += 1
+
+    return jsonify({
+        "success": True,
+        "key": key,
+        "limiters_reset": reset_count,
+        "message": f"Đã reset {reset_count} limiter(s) cho '{key}'",
+    })

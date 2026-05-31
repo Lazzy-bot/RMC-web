@@ -1,13 +1,22 @@
 import os
 import time
 import threading
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, g
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import get_session_user, init_oauth, init_user_store
-from config import APP_SECRET_KEY
+from config import APP_SECRET_KEY, RATE_LIMIT_ENABLED
 from routes import auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, slack_bp, admin_mgmt_bp
 from services.note import reload_all_schedules
+from rate_limiter import (
+    login_limiter,
+    api_ip_limiter,
+    api_user_limiter,
+    heavy_limiter,
+    slack_limiter,
+    sync_limiter,
+    admin_limiter,
+)
 
 
 def create_app() -> Flask:
@@ -39,13 +48,60 @@ def create_app() -> Flask:
 
     load_schedules_async(app)
 
+    def _rate_limited_response(retry_after: int) -> tuple:
+        """Trả về HTTP 429 chuẩn với Retry-After header."""
+        resp = jsonify({
+            "error": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
+            "code":  "rate_limited",
+            "retry_after": retry_after,
+        })
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(retry_after)
+        resp.headers["X-RateLimit-Remaining"] = "0"
+        return resp
+
     @app.before_request
     def enforce_user_access():
         path = request.path
+        client_ip = request.remote_addr or "unknown"
 
         if not path.startswith("/api"):
             return None
 
+        # ── Rate Limiting ─────────────────────────────────────────────────
+        if RATE_LIMIT_ENABLED:
+            # 1. Brute-force protection cho login (per IP, rất nghiêm ngặt)
+            if path.startswith("/api/auth/login/"):
+                allowed, retry_after = login_limiter.is_allowed(client_ip)
+                if not allowed:
+                    app.logger.warning(
+                        f"[RATE LIMIT] login blocked: ip={client_ip} retry_after={retry_after}s"
+                    )
+                    return _rate_limited_response(retry_after)
+
+            # 2. Sync endpoint — cực kỳ tốn kém, giới hạn chặt (per IP)
+            elif path == "/api/sync":
+                allowed, retry_after = sync_limiter.is_allowed(client_ip)
+                if not allowed:
+                    app.logger.warning(
+                        f"[RATE LIMIT] sync blocked: ip={client_ip} retry_after={retry_after}s"
+                    )
+                    return _rate_limited_response(retry_after)
+
+            # 3. Tất cả API khác — global per-IP limit
+            elif not path.startswith("/api/auth/callback/"):
+                allowed, retry_after = api_ip_limiter.is_allowed(client_ip)
+                if not allowed:
+                    app.logger.warning(
+                        f"[RATE LIMIT] api_ip blocked: ip={client_ip} retry_after={retry_after}s"
+                    )
+                    return _rate_limited_response(retry_after)
+
+            # Lưu ip vào g để after_request dùng cho headers
+            g.rl_ip = client_ip
+            g.rl_path = path
+
+        # ── Auth Check ────────────────────────────────────────────────────
         # Public endpoints required for sign-in flow
         if path in {"/api/auth/providers", "/api/auth/me", "/api/auth/status", "/api/auth/logout"}:
             return None
@@ -65,6 +121,55 @@ def create_app() -> Flask:
         if not is_admin and not approved:
             return jsonify({"error": "Tài khoản đang chờ admin phê duyệt", "code": "pending_approval"}), 403
 
+        # ── Per-user + Heavy endpoint limits (chỉ áp dụng sau khi xác thực) ──
+        if RATE_LIMIT_ENABLED:
+            user_key = user.get("email") or user.get("id") or client_ip
+
+            # Per-user global throttle (admin bỏ qua)
+            if not is_admin:
+                allowed, retry_after = api_user_limiter.is_allowed(user_key)
+                if not allowed:
+                    app.logger.warning(
+                        f"[RATE LIMIT] api_user blocked: user={user_key} retry_after={retry_after}s"
+                    )
+                    return _rate_limited_response(retry_after)
+
+            # Heavy endpoints: sync, charts, dashboard, report text, slack
+            _HEAVY_PREFIXES = (
+                "/api/sync",
+                "/api/charts",
+                "/api/dashboard",
+                "/api/report/text",
+            )
+            if path.startswith(_HEAVY_PREFIXES):
+                allowed, retry_after = heavy_limiter.is_allowed(user_key)
+                if not allowed:
+                    app.logger.warning(
+                        f"[RATE LIMIT] heavy blocked: user={user_key} path={path} retry_after={retry_after}s"
+                    )
+                    return _rate_limited_response(retry_after)
+
+            # Slack spam protection (per user)
+            if path == "/api/send-slack":
+                allowed, retry_after = slack_limiter.is_allowed(user_key)
+                if not allowed:
+                    app.logger.warning(
+                        f"[RATE LIMIT] slack blocked: user={user_key} retry_after={retry_after}s"
+                    )
+                    return _rate_limited_response(retry_after)
+
+            # Admin endpoints (per IP — thêm lớp bảo vệ ngoài auth)
+            if path.startswith("/api/admin") or path.startswith("/api/auth/admin"):
+                allowed, retry_after = admin_limiter.is_allowed(client_ip)
+                if not allowed:
+                    app.logger.warning(
+                        f"[RATE LIMIT] admin blocked: ip={client_ip} retry_after={retry_after}s"
+                    )
+                    return _rate_limited_response(retry_after)
+
+            # Lưu user key để after_request thêm headers
+            g.rl_user_key = user_key
+
         return None
 
     @app.after_request
@@ -75,6 +180,18 @@ def create_app() -> Flask:
             response.headers["Expires"] = "0"
             # Thêm header thông báo cho browser biết server đã trả lời (tránh treo)
             response.headers["X-Request-Completed"] = "true"
+
+            # Thêm RateLimit headers để client biết trạng thái limit hiện tại
+            if RATE_LIMIT_ENABLED:
+                client_ip = getattr(g, "rl_ip", request.remote_addr or "unknown")
+                remaining = api_ip_limiter.get_remaining(client_ip)
+                reset_ts  = api_ip_limiter.get_reset_time(client_ip)
+                response.headers["X-RateLimit-Limit"]     = str(api_ip_limiter.max_calls)
+                response.headers["X-RateLimit-Remaining"] = str(remaining)
+                response.headers["X-RateLimit-Reset"]     = str(reset_ts)
+                response.headers["X-RateLimit-Policy"]    = (
+                    f"{api_ip_limiter.max_calls};w={api_ip_limiter.period}"
+                )
         return response
 
     for bp in [auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, slack_bp, admin_mgmt_bp]:
