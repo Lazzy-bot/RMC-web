@@ -22,12 +22,21 @@ timeout /t 3 /nobreak >nul
 docker-compose ps
 
 echo.
-echo ==========================================
-echo  App dang chay tai: http://localhost:5000
-echo  Mo trinh duyet va truy cap dia chi tren
-echo ==========================================
+echo =============================================================
+echo  [KHOI CHAY THANH CONG]
 echo.
-echo De dung app:  docker-compose down
-echo De xem log:   docker-compose logs -f
+echo  1. Truy cap truc tiep (Local Host):
+echo     http://localhost:5000
+echo.
+echo  2. Truy cap qua Tunnel (Ngrok):
+echo     https://balance-rotting-blooming.ngrok-free.dev
+echo.
+echo  3. Xem trang thai Tunnel (Ngrok Dashboard):
+echo     http://localhost:4040
+echo =============================================================
+echo.
+echo De xem log ung dung: docker-compose logs -f rmc-assistant
+echo De xem log Ngrok:    docker-compose logs -f ngrok
+echo De dung ung dung:    docker-compose down
 echo.
 pause

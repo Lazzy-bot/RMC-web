@@ -73,7 +73,13 @@ def load_all_notes() -> list:
     if not os.path.exists(NOTE_ARCHIVE_DIR):
         return result
 
-    for fname in sorted(os.listdir(NOTE_ARCHIVE_DIR)):
+    try:
+        filenames = os.listdir(NOTE_ARCHIVE_DIR)
+    except Exception as e:
+        print(f"ERROR listing directory {NOTE_ARCHIVE_DIR}: {e}")
+        return result
+
+    for fname in sorted(filenames):
         if not (fname.startswith("reminders") and fname.endswith(".json")):
             continue
         fpath = os.path.join(NOTE_ARCHIVE_DIR, fname)
@@ -221,9 +227,12 @@ def get_pending_notifications() -> list:
 
 def reload_all_schedules():
     """Khởi động lại tất cả lịch nhắc từ file (gọi khi server start)."""
-    schedule.clear()
-    notes = load_all_notes()
-    for note in notes:
-        if not note.get("done", False):
-            schedule_note(note)
-    print(f"Loaded {len(notes)} reminder(s) from disk")
+    try:
+        schedule.clear()
+        notes = load_all_notes()
+        for note in notes:
+            if not note.get("done", False):
+                schedule_note(note)
+        print(f"Loaded {len(notes)} reminder(s) from disk")
+    except Exception as e:
+        print(f"ERROR reloading all schedules: {e}")

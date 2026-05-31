@@ -30,4 +30,4 @@ WORKDIR /app/backend
 # --timeout 75: giới hạn thời gian mỗi request, không để treo quá lâu
 # --keepalive 5: giữ kết nối sống 5s giữa các request
 # --graceful-timeout 30: cho phép request đang xử lý hoàn thành trước khi restart
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "--worker-class", "gthread", "--timeout", "75", "--keep-alive", "5", "--log-level", "warning", "app:wsgi_app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--worker-class", "gthread", "--timeout", "75", "--keep-alive", "5", "--graceful-timeout", "30", "--log-level", "warning", "app:wsgi_app"]

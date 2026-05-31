@@ -3,9 +3,8 @@ services:
     build: .
     container_name: rmc-assistant-v4
     restart: unless-stopped
-    # Không cần expose port ra máy host nữa vì Ngrok sẽ truy cập trực tiếp
-    # ports:
-    #   - "5000:5000"
+    ports:
+      - "5000:5000"
     volumes:
       # Mount thư mục data từ máy host vào container.
       # Có thể override bằng biến DATA_DIR trong file .env (ví dụ máy B).
@@ -35,6 +34,9 @@ services:
       # Azure AD (tuỳ chọn — nếu muốn override)
       # - AZURE_CLIENT_ID=ac4edccf-a8ee-41aa-bcc4-6603c4bebae1
       # - AZURE_TENANT_ID=5983a1d2-f46b-492d-a9b3-7e2f3609d20b
+    # Giới hạn RAM để tránh OOM (Exit 137)
+    mem_limit: 512m
+    mem_reservation: 256m
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/auth/status')"]
       interval: 30s
@@ -44,10 +46,15 @@ services:
 
   ngrok:
     image: ngrok/ngrok:latest
-    restart: unless-stopped
+    # Dùng on-failure thay unless-stopped để tránh loop ERR_NGROK_334
+    # Thêm delay 30s để ngrok cloud kịp release tunnel cũ trước khi reconnect
+    restart: on-failure
     container_name: ngrok-tunnel
     command: http --url=balance-rotting-blooming.ngrok-free.dev rmc-assistant:5000
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    depends_on:
+      rmc-assistant:
+        condition: service_healthy
     ports:
       - "4040:4040" # Port để xem giao diện web của Ngrok

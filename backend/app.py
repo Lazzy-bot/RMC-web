@@ -26,17 +26,18 @@ def create_app() -> Flask:
     init_user_store()
     init_oauth(app)
 
-    _schedules_loaded = False
-
-    @app.before_request
-    def load_schedules_lazily():
-        nonlocal _schedules_loaded
-        if not _schedules_loaded:
-            _schedules_loaded = True
+    def load_schedules_async(app):
+        def run():
+            time.sleep(2)
             try:
-                reload_all_schedules()
+                with app.app_context():
+                    reload_all_schedules()
             except Exception as e:
-                app.logger.error(f"Lazy loading schedules error: {e}")
+                app.logger.error(f"Async loading schedules error: {e}")
+
+        threading.Thread(target=run, daemon=True).start()
+
+    load_schedules_async(app)
 
     @app.before_request
     def enforce_user_access():
