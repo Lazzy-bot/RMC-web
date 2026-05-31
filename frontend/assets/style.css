@@ -1392,3 +1392,26 @@ input[list]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
     padding: 6px;
   }
 }
+
+/* Additional Mobile Table & Viewport Fixes */
+@media (max-width: 768px) {
+  .note-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .note-table-wrap table {
+    min-width: 600px; /* Ngăn bảng bị co rút làm méo chữ, cho phép cuộn ngang mượt mà */
+  }
+  /* Cải thiện các Modal form trên điện thoại */
+  .modal-overlay {
+    padding: 8px !important;
+  }
+  .modal {
+    max-height: 92vh !important;
+  }
+  /* Tối ưu hóa padding và khoảng cách các form */
+  .form-group input, .form-group select, .form-group textarea {
+    padding: 8px 10px !important;
+    font-size: 13px !important;
+  }
+}

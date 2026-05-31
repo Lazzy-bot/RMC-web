@@ -109,6 +109,125 @@
       .col-lg-6 { grid-column: span 6; }
     }
 
+    /* Mobile Responsive Overhaul */
+    @media (max-width: 768px) {
+      body {
+        padding: 8px;
+      }
+      .dashboard-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .dashboard-title {
+        font-size: 14px;
+        justify-content: center;
+      }
+      .filter-wrap {
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+        width: 100%;
+      }
+      .filter-wrap select, .filter-wrap button {
+        flex: 1 1 calc(50% - 4px);
+        font-size: 11px;
+        padding: 6px 8px;
+        justify-content: center;
+      }
+      .filter-wrap label {
+        display: none !important;
+      }
+      .kpi-grid {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .kpi-card {
+        padding: 12px 10px;
+      }
+      .kpi-card::after {
+        top: 25%;
+        height: 50%;
+      }
+      .kpi-label {
+        font-size: 10px;
+        margin-bottom: 2px;
+      }
+      .kpi-value {
+        font-size: 16px;
+      }
+      .kpi-icon {
+        right: 10px;
+        top: 10px;
+        font-size: 14px;
+      }
+      .charts-grid {
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .chart-panel {
+        padding: 12px;
+      }
+      .chart-panel h3 {
+        font-size: 11px;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+      }
+      .table-panel {
+        padding: 12px;
+      }
+      .analysis-panel {
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .analysis-panel h3 {
+        font-size: 12px;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+      }
+      .analysis-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .analysis-card {
+        padding: 10px 12px;
+      }
+      .analysis-card-title {
+        font-size: 10px;
+      }
+      .analysis-card-body {
+        font-size: 11.5px;
+        line-height: 1.5;
+      }
+      .analysis-summary {
+        font-size: 11.5px;
+        padding: 10px 12px;
+        margin-top: 10px;
+      }
+      /* Custom modal on di động */
+      .modal-overlay {
+        padding: 10px;
+      }
+      .modal-overlay .modal {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 16px 12px !important;
+        max-height: 85vh;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .kpi-grid {
+        grid-template-columns: repeat(2, 1fr); /* Ép chia 2 cột đều nhau */
+      }
+      .filter-wrap select, .filter-wrap button {
+        flex: 1 1 100%; /* Đứng dọc hoàn toàn */
+      }
+    }
+
     /* Table styles matching main app */
     .table-panel {
       background: var(--bg-panel);
@@ -512,6 +631,10 @@
       }
     }
 
+    function isMobile() {
+      return window.innerWidth < 768;
+    }
+
     function commonOptions(theme) {
       return {
         chart: { toolbar: { show: false }, background: 'transparent', fontFamily: 'IBM Plex Sans, sans-serif' },
@@ -521,35 +644,56 @@
     }
 
     function updateAreaChart(id, series, theme) {
+      const mobile = isMobile();
       renderOrUpdate(id, {
         ...commonOptions(theme),
         series: series,
-        chart: { ...commonOptions(theme).chart, height: 260, type: 'area' },
+        chart: { ...commonOptions(theme).chart, height: mobile ? 220 : 260, type: 'area' },
         colors: ['#3b82f6'],
         stroke: { curve: 'smooth', width: 2 },
-        xaxis: { type: 'datetime' }
+        xaxis: { 
+          type: 'datetime',
+          labels: { style: { fontSize: mobile ? '9px' : '11px' } }
+        },
+        yaxis: {
+          labels: { style: { fontSize: mobile ? '9px' : '11px' } }
+        }
       });
     }
 
     function updateDonutChart(id, series, labels, theme) {
+      const mobile = isMobile();
       renderOrUpdate(id, {
         ...commonOptions(theme),
         series: series,
         labels: labels,
-        chart: { ...commonOptions(theme).chart, type: 'donut', height: 260 },
+        chart: { ...commonOptions(theme).chart, type: 'donut', height: mobile ? 220 : 260 },
         colors: ['#ef4444', '#f97316', '#22c55e'],
-        legend: { position: 'bottom' }
+        legend: { 
+          position: 'bottom',
+          fontSize: mobile ? '10px' : '12px',
+          horizontalAlign: 'center',
+          itemMargin: { horizontal: 6, vertical: 2 }
+        },
+        plotOptions: {
+          pie: {
+            donut: {
+              size: mobile ? '60%' : '70%'
+            }
+          }
+        }
       });
     }
 
     function updateBarChart(id, data, categories, theme, color, fullNames) {
+      const mobile = isMobile();
       renderOrUpdate(id, {
         ...commonOptions(theme),
         series: [{ name: 'Số lượng', data: data }],
         chart: { 
           ...commonOptions(theme).chart, 
           type: 'bar', 
-          height: 260,
+          height: mobile ? 220 : 260,
           events: {
             dataPointSelection: function(event, chartContext, config) {
               const siteName = (fullNames && fullNames[config.dataPointIndex]) || categories[config.dataPointIndex];
@@ -572,7 +716,15 @@
         colors: [color || '#3b82f6'],
         xaxis: { 
           categories: categories,
-          labels: { rotate: 0, rotateAlways: false, hideOverlappingLabels: false }
+          labels: { 
+            rotate: mobile ? -45 : 0, 
+            rotateAlways: false, 
+            hideOverlappingLabels: true,
+            style: { fontSize: mobile ? '9px' : '11px' }
+          }
+        },
+        yaxis: {
+          labels: { style: { fontSize: mobile ? '9px' : '11px' } }
         }
       });
     }
@@ -600,13 +752,17 @@
     }
 
     function updateHorizontalBarChart(id, data, categories, theme, color) {
+      const mobile = isMobile();
+      const baseHeight = mobile ? 200 : 260;
+      const height = Math.max(baseHeight, categories.length * (mobile ? 20 : 25));
+      
       renderOrUpdate(id, {
         ...commonOptions(theme),
         series: [{ name: 'Số lượng', data: data }],
         chart: { 
           ...commonOptions(theme).chart, 
           type: 'bar', 
-          height: Math.max(260, categories.length * 25), // Tự động giãn chiều cao theo số lượng Site
+          height: height, 
           events: {
             dataPointSelection: function(event, chartContext, config) {
               const siteName = categories[config.dataPointIndex];
@@ -616,17 +772,40 @@
         },
         colors: [color || '#3b82f6'],
         plotOptions: { bar: { horizontal: true, barHeight: '70%' } },
-        xaxis: { categories: categories, labels: { show: true } },
-        yaxis: { labels: { style: { fontSize: '11px' } } }
+        xaxis: { categories: categories, labels: { show: true, style: { fontSize: mobile ? '9px' : '11px' } } },
+        yaxis: { 
+          labels: { 
+            maxWidth: mobile ? 85 : 150, 
+            style: { fontSize: mobile ? '9px' : '11px' } 
+          } 
+        }
       });
     }
 
     function updateHeatmapChart(id, series, theme) {
+      const mobile = isMobile();
       renderOrUpdate(id, {
         ...commonOptions(theme),
         series: series,
-        chart: { ...commonOptions(theme).chart, height: 280, type: 'heatmap' },
-        colors: ["#3b82f6"]
+        chart: { ...commonOptions(theme).chart, height: mobile ? 240 : 280, type: 'heatmap' },
+        colors: ["#3b82f6"],
+        xaxis: {
+          labels: {
+            show: true,
+            rotate: mobile ? -45 : 0,
+            style: { fontSize: mobile ? '8px' : '10px' },
+            formatter: function(value) {
+              if (mobile) {
+                const hour = parseInt(value);
+                if (isNaN(hour) || hour % 3 !== 0) return '';
+              }
+              return value;
+            }
+          }
+        },
+        yaxis: {
+          labels: { style: { fontSize: mobile ? '9px' : '11px' } }
+        }
       });
     }
 
