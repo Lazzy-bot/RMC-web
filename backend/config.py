@@ -32,7 +32,7 @@ TENANT_ID  = os.getenv("AZURE_TENANT_ID",  "5983a1d2-f46b-492d-a9b3-7e2f3609d20b
 AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "") or MS_OAUTH_CLIENT_SECRET
 MS_OAUTH_TENANT_ID = os.getenv("MS_OAUTH_TENANT_ID") or TENANT_ID
 AUTHORITY  = f"https://login.microsoftonline.com/{TENANT_ID}"
-GRAPH_SCOPES = ["Files.Read", "Files.ReadWrite"]
+GRAPH_SCOPES = ["Files.Read", "Files.ReadWrite", "offline_access"]
 
 # ============================================================
 # Base OneDrive share link (ROOT folder)
