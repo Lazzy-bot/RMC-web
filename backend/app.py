@@ -6,14 +6,13 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import get_session_user, init_oauth, init_user_store
 from config import APP_SECRET_KEY, RATE_LIMIT_ENABLED
-from routes import auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, slack_bp, admin_mgmt_bp
+from routes import auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, admin_mgmt_bp
 from services.note import reload_all_schedules
 from rate_limiter import (
     login_limiter,
     api_ip_limiter,
     api_user_limiter,
     heavy_limiter,
-    slack_limiter,
     sync_limiter,
     admin_limiter,
 )
@@ -166,14 +165,6 @@ def create_app() -> Flask:
                     )
                     return _rate_limited_response(retry_after)
 
-            # Slack spam protection (per user)
-            if path == "/api/send-slack":
-                allowed, retry_after = slack_limiter.is_allowed(user_key)
-                if not allowed:
-                    app.logger.warning(
-                        f"[RATE LIMIT] slack blocked: user={user_key} retry_after={retry_after}s"
-                    )
-                    return _rate_limited_response(retry_after)
 
             # Admin endpoints (per IP — thêm lớp bảo vệ ngoài auth)
             if path.startswith("/api/admin") or path.startswith("/api/auth/admin"):
@@ -211,7 +202,7 @@ def create_app() -> Flask:
                 )
         return response
 
-    for bp in [auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, slack_bp, admin_mgmt_bp]:
+    for bp in [auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, admin_mgmt_bp]:
         app.register_blueprint(bp)
 
     @app.route("/", defaults={"path": ""})

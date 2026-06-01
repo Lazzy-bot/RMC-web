@@ -2068,38 +2068,7 @@ function bindGroupTabs() {
   });
 }
 
-/* ── Slack send ─────────────────────────────────────────────── */
-function bindSlackButton() {
-  const btn = $("#btn-slack");
-  if (!btn) return;
-  btn.onclick = async () => {
-    const text = $("#output-text").value.trim();
-    if (!text || text.startsWith("⏳") || text.startsWith("[")) {
-      showToast("Chưa có nội dung", "Chọn báo cáo hoặc điền thông tin trước.");
-      return;
-    }
-    // Lay site key tu active site button
-    const activeSiteBtn = $(".site-btn.open");
-    const siteKey = activeSiteBtn
-      ? activeSiteBtn.querySelector("span")?.textContent?.trim() || ""
-      : "";
 
-    btn.disabled = true;
-    btn.textContent = "⏳";
-    try {
-      const res = await apiFetch("/api/send-slack", {
-        method: "POST",
-        body: JSON.stringify({ text, site: siteKey }),
-      });
-      if (res.error) showToast("Lỗi Slack", res.error);
-      else showToast("Đã gửi Slack ✓", `Đã gửi vào channel của ${siteKey || "mặc định"}`);
-    } catch {
-      showToast("Lỗi", "Không thể kết nối API");
-    }
-    btn.disabled = false;
-    btn.textContent = "📨 Slack";
-  };
-}
 
 /* ── Reminder overlay ───────────────────────────────────────── */
 const _reminderQueue = [];
@@ -2140,7 +2109,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   
   const boots = [
-    bindThemeToggle, initSidebarResize, bindSlackButton, bindItemSearch,
+    bindThemeToggle, initSidebarResize, bindItemSearch,
     bindAuthButtons, bindGroupTabs, bindSiteSearch, bindOutputActions,
     bindModalCloses, bindAdminModal, bindContactModal, bindStatusModal,
     bindNoteCreate, bindNoteTabs, bindNoteSearch, bindNotifFormInNote,

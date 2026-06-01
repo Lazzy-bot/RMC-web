@@ -217,13 +217,7 @@ heavy_limiter = SlidingWindowRateLimiter(
     name="heavy",
 )
 
-# Slack message spam protection (per user)
-slack_limiter = SlidingWindowRateLimiter(
-    max_calls=_env_int("RATE_LIMIT_SLACK_MAX", 5),
-    period=_env_int("RATE_LIMIT_SLACK_PERIOD", 60),
-    block_duration=_env_int("RATE_LIMIT_SLACK_BLOCK", 120),
-    name="slack",
-)
+
 
 # OneDrive sync trigger — rất tốn kém (per IP)
 sync_limiter = SlidingWindowRateLimiter(
@@ -247,7 +241,6 @@ ALL_LIMITERS = [
     api_ip_limiter,
     api_user_limiter,
     heavy_limiter,
-    slack_limiter,
     sync_limiter,
     admin_limiter,
 ]

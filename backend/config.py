@@ -29,10 +29,11 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
 # ============================================================
 CLIENT_ID  = os.getenv("AZURE_CLIENT_ID") or MS_OAUTH_CLIENT_ID or "f65f87c2-73ce-43e7-8576-c83f8733bd1a"
 TENANT_ID  = os.getenv("AZURE_TENANT_ID",  "5983a1d2-f46b-492d-a9b3-7e2f3609d20b")
-AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "") or MS_OAUTH_CLIENT_SECRET
+# Nếu dùng CLIENT_ID mặc định của Office, bắt buộc không dùng secret để chạy public client flow
+AZURE_CLIENT_SECRET = "" if CLIENT_ID == "ac4edccf-a8ee-41aa-bcc4-6603c4bebae1" else (os.getenv("AZURE_CLIENT_SECRET", "") or MS_OAUTH_CLIENT_SECRET)
 MS_OAUTH_TENANT_ID = os.getenv("MS_OAUTH_TENANT_ID") or TENANT_ID
 AUTHORITY  = f"https://login.microsoftonline.com/{TENANT_ID}"
-GRAPH_SCOPES = ["Files.Read", "Files.ReadWrite", "offline_access"]
+GRAPH_SCOPES = ["Files.Read", "Files.ReadWrite"]
 
 # ============================================================
 # Base OneDrive share link (ROOT folder)
@@ -166,7 +167,7 @@ SITES_CONFIG = {
     },
 }
 
-# Map ten site -> site key cho Slack routing
+# Map ten site -> site key
 # Key la ten UPPERCASE khong dau (cach browser gui len)
 SITE_KEY_MAP = {
     "AEON NGUYEN VAN LINH": "ANVL",
@@ -209,10 +210,7 @@ RATE_LIMIT_HEAVY_MAX    = int(os.getenv("RATE_LIMIT_HEAVY_MAX",    "10"))   # 10
 RATE_LIMIT_HEAVY_PERIOD = int(os.getenv("RATE_LIMIT_HEAVY_PERIOD", "60"))
 RATE_LIMIT_HEAVY_BLOCK  = int(os.getenv("RATE_LIMIT_HEAVY_BLOCK",  "120"))  # block 2 phút
 
-# Slack spam protection (per user)
-RATE_LIMIT_SLACK_MAX    = int(os.getenv("RATE_LIMIT_SLACK_MAX",    "5"))    # 5 msg/60s
-RATE_LIMIT_SLACK_PERIOD = int(os.getenv("RATE_LIMIT_SLACK_PERIOD", "60"))
-RATE_LIMIT_SLACK_BLOCK  = int(os.getenv("RATE_LIMIT_SLACK_BLOCK",  "120"))
+
 
 # OneDrive sync trigger (per IP) — rất tốn kém
 RATE_LIMIT_SYNC_MAX     = int(os.getenv("RATE_LIMIT_SYNC_MAX",    "3"))    # 3 lần/5 phút
