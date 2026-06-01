@@ -31,30 +31,49 @@ services:
       - SLACK_WEBHOOK_ANVL=${SLACK_WEBHOOK_ANVL:-}
       - SLACK_WEBHOOK_ATQB=${SLACK_WEBHOOK_ATQB:-}
       - SLACK_WEBHOOK_AVG=${SLACK_WEBHOOK_AVG:-}
-      # Azure AD (tuỳ chọn — nếu muốn override)
-      # - AZURE_CLIENT_ID=ac4edccf-a8ee-41aa-bcc4-6603c4bebae1
-      # - AZURE_TENANT_ID=5983a1d2-f46b-492d-a9b3-7e2f3609d20b
-    # Giới hạn RAM để tránh OOM (Exit 137)
-    mem_limit: 512m
-    mem_reservation: 256m
+
+      # Rate limiting — tắt khi debug local, bật khi production
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+
+      # FIX #2: Tăng giới hạn API để tránh bị block khi polling + nhiều người dùng
+      - RATE_LIMIT_API_MAX=200
+      - RATE_LIMIT_API_PERIOD=60
+      - RATE_LIMIT_API_BLOCK=30
+      - RATE_LIMIT_USER_MAX=400
+      - RATE_LIMIT_HEAVY_MAX=20
+      - RATE_LIMIT_HEAVY_PERIOD=60
+      - RATE_LIMIT_HEAVY_BLOCK=60
+
+    # FIX #3: Tăng RAM limit từ 512m → 1g (MSAL + openpyxl + Excel data = dễ OOM)
+    mem_limit: 1g
+    mem_reservation: 512m
+
+    # FIX #4: Healthcheck dùng đúng endpoint public (không cần auth),
+    #         tăng timeout và start_period để container kịp khởi động
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/auth/status')"]
+      test: ["CMD", "python", "-c",
+             "import urllib.request, sys; \
+              r = urllib.request.urlopen('http://localhost:5000/api/auth/providers', timeout=10); \
+              sys.exit(0 if r.status == 200 else 1)"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
 
   ngrok:
     image: ngrok/ngrok:latest
-    # Dùng on-failure thay unless-stopped để tránh loop ERR_NGROK_334
-    # Thêm delay 30s để ngrok cloud kịp release tunnel cũ trước khi reconnect
-    restart: on-failure
+    # FIX #5: Dùng on-failure:5 thay on-failure để có giới hạn retry, tránh loop vô hạn
+    restart: on-failure:5
     container_name: ngrok-tunnel
-    command: http --url=balance-rotting-blooming.ngrok-free.dev rmc-assistant:5000
+    # FIX #6: Chạy ngrok qua http với domain tĩnh
+    command: >
+      http
+      --url=balance-rotting-blooming.ngrok-free.dev
+      rmc-assistant:5000
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     depends_on:
       rmc-assistant:
         condition: service_healthy
     ports:
-      - "4040:4040" # Port để xem giao diện web của Ngrok
+      - "4040:4040"

@@ -48,6 +48,23 @@ def create_app() -> Flask:
 
     load_schedules_async(app)
 
+    # FIX: Pre-warm dashboard cache ở background khi app khởi động
+    # Tránh user đầu tiên bị chờ lâu do cold start OneDrive call
+    def _prewarm_dashboard(app):
+        def run():
+            import time
+            time.sleep(5)  # Đợi app sẵn sàng hoàn toàn
+            try:
+                with app.app_context():
+                    from services.excel import _load_dashboard_raw
+                    _load_dashboard_raw()
+                    app.logger.info("Dashboard cache pre-warmed successfully.")
+            except Exception as e:
+                app.logger.warning(f"Dashboard cache pre-warm failed (will retry on first request): {e}")
+        threading.Thread(target=run, daemon=True).start()
+
+    _prewarm_dashboard(app)
+
     def _rate_limited_response(retry_after: int) -> tuple:
         """Trả về HTTP 429 chuẩn với Retry-After header."""
         resp = jsonify({

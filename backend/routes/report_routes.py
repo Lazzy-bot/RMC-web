@@ -133,6 +133,16 @@ def trigger_sync():
         with _cache_lock:
             _site_files_cache.clear()
 
+        # FIX: Invalidate dashboard Excel cache sau sync để dữ liệu mới nhất được load
+        try:
+            from services.excel import _dashboard_cache, _load_dashboard_raw
+            import threading
+            with _dashboard_cache["lock"]:
+                _dashboard_cache["loaded_at"] = 0.0  # Expire cache ngay
+            threading.Thread(target=_load_dashboard_raw, daemon=True).start()
+        except Exception as e:
+            print(f"WARN: Dashboard cache invalidation failed: {e}")
+
     threading.Thread(target=do_sync, daemon=True).start()
     return jsonify({"message": "Đang đồng bộ ở background..."})
 

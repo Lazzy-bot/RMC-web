@@ -25,9 +25,18 @@ EXPOSE 5000
 
 WORKDIR /app/backend
 
-# Dùng gunicorn thay flask dev server
-# --threads 8: đủ thread để xử lý nhiều request khi OneDrive chậm
-# --timeout 75: giới hạn thời gian mỗi request, không để treo quá lâu
-# --keepalive 5: giữ kết nối sống 5s giữa các request
-# --graceful-timeout 30: cho phép request đang xử lý hoàn thành trước khi restart
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--worker-class", "gthread", "--timeout", "75", "--keep-alive", "5", "--graceful-timeout", "30", "--log-level", "warning", "app:wsgi_app"]
+# FIX #1: Tăng --timeout từ 75 → 300s (OneDrive/Graph API có thể chậm 60-90s)
+#         Tăng --threads từ 4 → 8 để xử lý nhiều request đồng thời hơn
+#         Thêm --worker-connections để không drop connection khi busy
+#         Thêm --log-level info để dễ debug hơn
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--workers", "1", \
+     "--threads", "8", \
+     "--worker-class", "gthread", \
+     "--timeout", "300", \
+     "--keep-alive", "75", \
+     "--graceful-timeout", "60", \
+     "--log-level", "info", \
+     "--access-logfile", "-", \
+     "app:wsgi_app"]

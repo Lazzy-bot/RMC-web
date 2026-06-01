@@ -2,6 +2,7 @@ import os
 import base64
 import datetime
 import requests
+import threading
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import sys
@@ -15,11 +16,25 @@ from config import CHART_EXCEL_SHARE_LINK, STATUS_EXCEL_SHARE_LINK, BASE_DIR
 # Session dùng chung với connection pool và retry strategy (không retry cho 429 để tránh vòng lặp)
 _session = requests.Session()
 _retry = Retry(total=1, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504], raise_on_status=False)
-_session.mount("https://", HTTPAdapter(max_retries=_retry, pool_connections=2, pool_maxsize=4))
+_session.mount("https://", HTTPAdapter(max_retries=_retry, pool_connections=4, pool_maxsize=8))
 
 # Cache for drive and item IDs
 _chart_excel_cache: dict = {"drive_id": None, "item_id": None}
 _status_excel_cache: dict = {"drive_id": None, "item_id": None}
+
+# ============================================================
+# FIX: In-memory dashboard data cache
+# Tránh gọi OneDrive mỗi request → nguyên nhân chính gây "Waiting"
+# TTL mặc định 5 phút; tự động background-refresh khi sắp hết hạn
+# ============================================================
+_dashboard_cache: dict = {
+    "data": None,         # kết quả cuối cùng
+    "loaded_at": 0.0,     # epoch timestamp khi load xong
+    "is_loading": False,  # đang có thread nào load không
+    "lock": threading.Lock(),
+}
+_DASHBOARD_CACHE_TTL = 300      # 5 phút: trả cache nếu còn mới
+_DASHBOARD_REFRESH_AHEAD = 60   # Bắt đầu background-refresh khi còn 60s nữa hết hạn
 
 
 def _log(msg):
@@ -270,68 +285,120 @@ def col_to_idx(col):
     for char in col: idx = idx * 26 + (ord(char) - ord('A') + 1)
     return idx - 1
 
-def get_site_chart_data(): return get_comprehensive_dashboard_data()
-def get_filtered_chart_data(s, e, si=None): return get_comprehensive_dashboard_data(s, e, si)
-
-def get_comprehensive_dashboard_data(start_date=None, end_date=None, site_filter=None):
+def _load_dashboard_raw():
+    """Tải raw Excel data từ OneDrive, cập nhật _dashboard_cache.
+    Gọi trong background thread — không block request."""
     from config import METADATA_DIR
     import json
-    
-    vals = None
-    address = ""
-    
-    # 1. Tải dữ liệu từ OneDrive
+
+    with _dashboard_cache["lock"]:
+        if _dashboard_cache["is_loading"]:
+            return  # thread khác đang load, bỏ qua
+        _dashboard_cache["is_loading"] = True
+
     try:
         drive_id, item_id = _resolve_excel_item(CHART_EXCEL_SHARE_LINK, _chart_excel_cache)
-        token = graph_session.ensure_token()
+        token   = graph_session.ensure_token()
         headers = {"Authorization": f"Bearer {token}"}
-        target = "Processing Results"
-        r_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/workbook/worksheets"
-        sheets_r = requests.get(r_url, headers=headers, timeout=15)
+        target  = "Processing Results"
+
+        r_url    = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/workbook/worksheets"
+        sheets_r = _session.get(r_url, headers=headers, timeout=15)
         if sheets_r.status_code == 200:
             sn_list = [s["name"] for s in sheets_r.json().get("value", [])]
             for sn in sn_list:
-                if sn.strip().upper() == "PROCESSING RESULTS": target = sn; break
+                if sn.strip().upper() == "PROCESSING RESULTS":
+                    target = sn
+                    break
             else:
-                if "Sheet1" in sn_list: target = "Sheet1"
-                else: target = sn_list[0]
-        
-        url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/workbook/worksheets('{target}')/usedRange"
-        r = requests.get(url, headers=headers, timeout=25)
-        if r.status_code != 200: raise Exception("API usedRange failed")
-        
+                target = "Sheet1" if "Sheet1" in sn_list else (sn_list[0] if sn_list else target)
+
+        url = (
+            f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
+            f"/workbook/worksheets('{target}')/usedRange"
+        )
+        r = _session.get(url, headers=headers, timeout=30)
+        if r.status_code != 200:
+            raise Exception(f"usedRange HTTP {r.status_code}")
+
         res_json = r.json()
-        vals = res_json.get("values", [])
-        address = res_json.get("address", "")
-        
-        # Ghi cache khi tải thành công
+        vals     = res_json.get("values", [])
+        address  = res_json.get("address", "")
+
+        # Lưu cache disk để dùng khi offline
         try:
             os.makedirs(METADATA_DIR, exist_ok=True)
             cache_file = os.path.join(METADATA_DIR, "excel_raw_cache.json")
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump({"values": vals, "address": address}, f, ensure_ascii=False, indent=2)
-            _log("OK: Updated Excel data cache successfully.")
+            _log("OK: Updated Excel data cache (disk).")
         except Exception as ce:
-            _log(f"WARN: Error saving Excel data cache: {ce}")
-            
+            _log(f"WARN: Error saving Excel disk cache: {ce}")
+
+        with _dashboard_cache["lock"]:
+            _dashboard_cache["data"]      = {"values": vals, "address": address}
+            _dashboard_cache["loaded_at"] = _time.time()
+
+        _log("OK: Dashboard in-memory cache refreshed.")
+
     except Exception as e:
-        _log(f"WARN: Cannot connect to OneDrive ({e}). Checking local cache...")
+        _log(f"WARN: Background Excel refresh failed: {e}")
+        # Fallback: cố gắng đọc disk cache
+        from config import METADATA_DIR
+        import json
         cache_file = os.path.join(METADATA_DIR, "excel_raw_cache.json")
-        if os.path.exists(cache_file):
+        if os.path.exists(cache_file) and _dashboard_cache["data"] is None:
             try:
                 with open(cache_file, "r", encoding="utf-8") as f:
-                    cache_data = json.load(f)
-                vals = cache_data.get("values", [])
-                address = cache_data.get("address", "")
-                _log("OK: Restored chart data from local cache successfully.")
+                    cached = json.load(f)
+                with _dashboard_cache["lock"]:
+                    _dashboard_cache["data"]      = cached
+                    _dashboard_cache["loaded_at"] = _time.time() - _DASHBOARD_CACHE_TTL + 30
+                _log("OK: Dashboard restored from disk cache (fallback).")
             except Exception as ce:
-                _log(f"ERROR: Cannot read local cache: {ce}")
-                return {"error": f"OneDrive offline và cache local bị hỏng: {str(e)}"}
-        else:
-            _log("ERROR: No local cache found.")
-            return {"error": f"Không thể kết nối OneDrive và chưa có dữ liệu cache local. Vui lòng kiểm tra lại kết nối mạng hoặc OneDrive."}
+                _log(f"ERROR: Cannot read disk cache: {ce}")
+    finally:
+        with _dashboard_cache["lock"]:
+            _dashboard_cache["is_loading"] = False
 
-    # 2. Xử lý dữ liệu (chạy chung cho cả dữ liệu live và dữ liệu offline từ cache)
+
+def _get_raw_excel_data() -> dict:
+    """Trả về raw Excel data từ in-memory cache.
+    Tự động trigger background refresh khi cache sắp hết hạn.
+    Nếu chưa có cache, BLOCK một lần để tải về (cold start)."""
+    now     = _time.time()
+    age     = now - _dashboard_cache["loaded_at"]
+    has_data = _dashboard_cache["data"] is not None
+
+    if has_data and age < (_DASHBOARD_CACHE_TTL - _DASHBOARD_REFRESH_AHEAD):
+        # Cache còn mới → trả thẳng
+        return _dashboard_cache["data"]
+
+    if has_data and age < _DASHBOARD_CACHE_TTL:
+        # Cache gần hết hạn → refresh ngầm, vẫn trả cache cũ ngay
+        with _dashboard_cache["lock"]:
+            if not _dashboard_cache["is_loading"]:
+                threading.Thread(target=_load_dashboard_raw, daemon=True).start()
+        return _dashboard_cache["data"]
+
+    # Cache quá cũ hoặc chưa có → load ngay (blocking) lần đầu
+    _load_dashboard_raw()
+    return _dashboard_cache["data"] or {"values": [], "address": ""}
+
+
+def get_site_chart_data(): return get_comprehensive_dashboard_data()
+def get_filtered_chart_data(s, e, si=None): return get_comprehensive_dashboard_data(s, e, si)
+
+def get_comprehensive_dashboard_data(start_date=None, end_date=None, site_filter=None):
+    # FIX: Dùng cache thay vì gọi thẳng OneDrive mỗi request
+    raw = _get_raw_excel_data()
+    vals    = raw.get("values", [])
+    address = raw.get("address", "")
+
+    if not vals:
+        return {"error": "Không có dữ liệu. Vui lòng đợi cache tải hoặc thử lại sau."}
+
+    # 2. Xử lý dữ liệu từ cache
     try:
         from services.admin import load_sites_config
         _, site_map = load_sites_config()
