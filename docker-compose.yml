@@ -54,6 +54,16 @@ services:
       retries: 5
       start_period: 30s
 
+
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://rmc-assistant:5000
+    depends_on:
+      rmc-assistant:
+        condition: service_healthy
+
   ngrok:
     image: ngrok/ngrok:latest
     # FIX #5: Dùng on-failure:5 thay on-failure để có giới hạn retry, tránh loop vô hạn

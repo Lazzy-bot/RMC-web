@@ -77,6 +77,10 @@ def create_app() -> Flask:
         return resp
 
     @app.before_request
+    def start_timer():
+        g.start_time = time.time()
+
+    @app.before_request
     def enforce_user_access():
         path = request.path
         client_ip = request.remote_addr or "unknown"
@@ -188,6 +192,10 @@ def create_app() -> Flask:
             response.headers["Expires"] = "0"
             # Thêm header thông báo cho browser biết server đã trả lời (tránh treo)
             response.headers["X-Request-Completed"] = "true"
+            # Log thời gian xử lý để debug nếu cần
+            if hasattr(g, 'start_time'):
+                duration = time.time() - g.start_time
+                response.headers["X-Process-Time"] = f"{duration:.3f}s"
 
             # Thêm RateLimit headers để client biết trạng thái limit hiện tại
             if RATE_LIMIT_ENABLED:

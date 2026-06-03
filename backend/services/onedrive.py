@@ -16,7 +16,7 @@ _retry = Retry(
     status_forcelist=[500, 502, 503, 504],
     raise_on_status=False,
 )
-_session.mount("https://", HTTPAdapter(max_retries=_retry, pool_connections=4, pool_maxsize=8))
+_session.mount("https://", HTTPAdapter(max_retries=_retry, pool_connections=10, pool_maxsize=20))
 
 # Cache driveId và rootItemId để không gọi lại mỗi lần
 _drive_cache = {"drive_id": None, "root_item_id": None}
@@ -37,7 +37,7 @@ def _resolve_base_share_link():
     r = _session.get(
         f"https://graph.microsoft.com/v1.0/shares/u!{encoded}/driveItem",
         headers=headers,
-        timeout=12
+        timeout=15
     )
 
     if r.status_code != 200:
@@ -79,7 +79,7 @@ def list_files_from_url(subfolder_path: str) -> list:
         f"/items/{root_item_id}:/{subfolder_path}:/children"
     )
 
-    r = _session.get(api_url, headers=headers, timeout=10)
+    r = _session.get(api_url, headers=headers, timeout=15)
 
     if r.status_code == 200:
         items = r.json().get("value", [])
@@ -128,7 +128,7 @@ def download_file(file_dict: dict, save_dir: str = None, force: bool = False) ->
             meta = requests.get(
                 f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{file_dict['id']}",
                 headers=headers,
-                timeout=10
+                timeout=15
             ).json()
             download_url = meta.get("@microsoft.graph.downloadUrl")
             remote_time  = meta.get("lastModifiedDateTime")
@@ -235,7 +235,7 @@ def delete_file_by_path(subfolder_path: str, filename: str) -> bool:
             f"/items/{root_item_id}:/{quoted_path}/{quoted_name}"
         )
 
-        r = requests.delete(api_url, headers=headers, timeout=10)
+        r = requests.delete(api_url, headers=headers, timeout=15)
         if r.status_code == 204:
             print(f"OK: Deleted {filename} from {subfolder_path}")
             return True
@@ -269,7 +269,7 @@ def delete_folder_by_path(folder_path: str) -> bool:
         )
         
         print(f"DEBUG: Deleting folder by path: {api_url}")
-        r = requests.delete(api_url, headers=headers, timeout=10)
+        r = requests.delete(api_url, headers=headers, timeout=15)
         
         if r.status_code == 204:
             print(f"OK: Deleted folder (path): {folder_path}")
@@ -280,13 +280,13 @@ def delete_folder_by_path(folder_path: str) -> bool:
         
         # Resolve ID
         get_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{root_item_id}:/{quoted_path}"
-        r_get = requests.get(get_url, headers=headers, timeout=10)
+        r_get = requests.get(get_url, headers=headers, timeout=15)
         if r_get.status_code == 200:
             item_id = r_get.json().get("id")
             if item_id:
                 print(f"DEBUG: Found item ID {item_id} for path {folder_path}. Deleting by ID...")
                 del_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
-                r_del = requests.delete(del_url, headers=headers, timeout=10)
+                r_del = requests.delete(del_url, headers=headers, timeout=15)
                 if r_del.status_code == 204:
                     print(f"OK: Deleted folder (ID): {folder_path}")
                     return True

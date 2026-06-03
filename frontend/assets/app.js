@@ -44,7 +44,7 @@ async function apiFetch(path, opts = {}) {
 
   // Timeout mặc định: 30s cho mọi request (trừ khi caller cung cấp signal riêng)
   // Các tác vụ nặng (ghi Excel, sync) dùng timeout dài hơn qua opts.timeout
-  const timeoutMs = opts.timeout ?? 30000;
+  const timeoutMs = opts.timeout ?? 60000;
   delete opts.timeout; // Xóa để không truyền vào fetch
 
   // Nếu caller đã cung cấp signal riêng (ví dụ notification poller), ưu tiên dùng nó
@@ -159,7 +159,7 @@ function handleAuthQueryHint() {
 
 async function checkAuth() {
   try {
-    const res = await apiFetch("/api/auth/me", { timeout: 10000 });
+    const res = await apiFetch("/api/auth/me", { timeout: 15000 });
     applyProviderAvailability(res.providers || []);
 
     if (!res.logged_in) {

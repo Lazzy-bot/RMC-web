@@ -28,15 +28,21 @@ echo.
 echo  1. Truy cap truc tiep (Local Host):
 echo     http://localhost:5000
 echo.
-echo  2. Truy cap qua Tunnel (Ngrok):
+echo  2. Truy cap qua Tunnel (Cloudflare Quick Tunnel):
+echo     (Dang lay duong dan tu logs...)
+docker logs cloudflared-tunnel 2>&1 | findstr "trycloudflare.com"
+echo     (Neu khong thay duong dan o tren, hay go: docker logs cloudflared-tunnel)
+echo.
+echo  3. Truy cap qua Tunnel (Ngrok):
 echo     https://balance-rotting-blooming.ngrok-free.dev
 echo.
-echo  3. Xem trang thai Tunnel (Ngrok Dashboard):
+echo  4. Xem trang thai Tunnel (Ngrok Dashboard):
 echo     http://localhost:4040
 echo =============================================================
 echo.
 echo De xem log ung dung: docker-compose logs -f rmc-assistant
-echo De xem log Ngrok:    docker-compose logs -f ngrok
+echo De xem log Cloudflare Tunnel: docker-compose logs -f cloudflare-tunnel
+echo De xem log Ngrok Tunnel:      docker-compose logs -f ngrok
 echo De dung ung dung:    docker-compose down
 echo.
 pause
