@@ -72,7 +72,7 @@ services:
     # FIX #6: Chạy ngrok qua http với domain tĩnh
     command: >
       http
-      --url=balance-rotting-blooming.ngrok-free.dev
+      --url=credible-goofiness-tile.ngrok-free.dev
       rmc-assistant:5000
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}

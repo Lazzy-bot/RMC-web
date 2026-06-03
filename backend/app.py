@@ -154,7 +154,7 @@ def create_app() -> Flask:
                     )
                     return _rate_limited_response(retry_after)
 
-            # Heavy endpoints: sync, charts, dashboard, report text, slack
+            # Heavy endpoints: sync, charts, dashboard, report text
             _HEAVY_PREFIXES = (
                 "/api/sync",
                 "/api/charts",
