@@ -278,9 +278,9 @@ function bindTopbar() {
   };
   $("#btn-admin").onclick    = () => {
     openModal("admin");
+    // Load dữ liệu tab đang active (mặc định là Users)
     loadAdminUsers();
     loadAdminSites();
-    loadAdminDevices();
   };
 }
 
@@ -683,12 +683,41 @@ function bindModalCloses() {
       if (modal) {
         modal.classList.remove("open");
         if (modal.id === "admin-modal") {
-          // Force refresh of the main dashboard so changes to Sites/Devices/PICs reflect instantly
-          if (typeof initDashboard === "function") initDashboard();
+          // Sau khi đóng admin: reload sites và refresh nội dung báo cáo hiện tại ngay lập tức
+          refreshAfterAdminClose();
         }
       }
     };
   });
+}
+
+async function refreshAfterAdminClose() {
+  // Reload danh sách sites để phản ánh thay đổi Sites/Devices/PICs
+  await loadSites();
+  renderSiteList(state.currentGroup);
+
+  // Nếu đang có file được chọn, reload lại nội dung báo cáo ngay
+  // để phản ánh thay đổi template từ admin mà không cần click lại
+  if (state.currentFileId && state.currentFileName) {
+    const isNoError = (state.currentFileName || "").toUpperCase().includes("NO_ERROR");
+    try {
+      const res = await apiFetch("/api/report/text", {
+        method: "POST",
+        body: JSON.stringify({
+          file_id: state.currentFileId,
+          file_name: state.currentFileName,
+          is_no_error: isNoError,
+        }),
+        timeout: 20000,
+      });
+      if (!res.error) {
+        setOutputText(res.text);
+        state.originalReportText = res.text;
+      }
+    } catch {
+      // Bỏ qua lỗi reload - nội dung cũ vẫn hiển thị
+    }
+  }
 }
 
 /* ── Admin user management ─────────────────────────────────── */
