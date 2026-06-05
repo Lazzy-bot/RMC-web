@@ -32,6 +32,9 @@ const state = {
   graphAuthenticated: false,
   siteKeyMap: {},         // name -> code
   pics: [],               // list of PIC names
+  editingNoteStt: null,   // STT of note being edited, null if creating
+  noteTimeTags: [],       // list of times (strings) for the note form
+  userEmails: [],         // list of {name, email} for the note form
 };
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -209,6 +212,8 @@ function onAuthSuccess(user) {
     state.appInitialized = true;
     initApp();
   }
+  // Khởi chạy poller thông báo độc lập khi đăng nhập thành công
+  startNotificationPoller();
 }
 
 /* ── App init ──────────────────────────────────────────────── */
@@ -626,7 +631,10 @@ function openModal(name) {
   if (!overlay) return;
   overlay.classList.add("open");
 
-  if (name === "note") loadNotesList();
+  if (name === "note") {
+    loadNotesList();
+    loadUserEmailsList();
+  }
   if (name === "daviteq") initDaviteqViewer();
   if (name === "document") initDocumentViewer();
 
@@ -1385,17 +1393,64 @@ function _extractTimeFromReport() {
   return "";
 }
 
-function _formatContactRecoveryTime(start, end) {
-  if (!start && !end) return "...";
-  if (!start || !end) return start || end;
+function _formatContactRecoveryTime(startTime, startDate, endTime, endDate) {
+  if (!startTime && !endTime) return "...";
+  if (!startTime || !endTime) return startTime || endTime;
 
-  const [sh, sm] = start.split(":").map(Number);
-  const [eh, em] = end.split(":").map(Number);
-  if ([sh, sm, eh, em].some(n => Number.isNaN(n))) return `${start} - ${end}`;
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  if ([sh, sm, eh, em].some(n => Number.isNaN(n))) {
+    return `${startTime} - ${endTime}`;
+  }
 
+  // Helper to format duration to the largest units (ngày, giờ, phút)
+  function formatDuration(minutes) {
+    if (minutes <= 0) return "0 phút";
+    const days = Math.floor(minutes / (24 * 60));
+    const remainingMinutes = minutes % (24 * 60);
+    const hours = Math.floor(remainingMinutes / 60);
+    const mins = remainingMinutes % 60;
+    
+    let parts = [];
+    if (days > 0) {
+      parts.push(`${days} ngày`);
+    }
+    if (hours > 0) {
+      parts.push(`${hours} giờ`);
+    }
+    if (mins > 0 || parts.length === 0) {
+      parts.push(`${mins} phút`);
+    }
+    return parts.join(" ");
+  }
+
+  // Helper to format date YYYY-MM-DD to DD/MM/YYYY
+  function formatVnDate(dateStr) {
+    if (!dateStr) return "";
+    const parts = dateStr.split("-");
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  }
+
+  // Check if dates are provided
+  if (startDate && endDate) {
+    const startDt = new Date(`${startDate}T${startTime}:00`);
+    const endDt = new Date(`${endDate}T${endTime}:00`);
+    if (!isNaN(startDt.getTime()) && !isNaN(endDt.getTime())) {
+      const diffMs = endDt.getTime() - startDt.getTime();
+      const totalMinutes = Math.floor(diffMs / (1000 * 60));
+      const durStr = formatDuration(totalMinutes);
+      return `(${durStr}) ${startTime}, ngày ${formatVnDate(startDate)} - ${endTime}, ngày ${formatVnDate(endDate)}`;
+    }
+  }
+
+  // If one or both dates are missing, default to within 24h rollover logic
   let totalMinutes = (eh * 60 + em) - (sh * 60 + sm);
   if (totalMinutes < 0) totalMinutes += 24 * 60;
-  return `(${totalMinutes} phút) ${start} - ${end}`;
+  const durStr = formatDuration(totalMinutes);
+  return `(${durStr}) ${startTime} - ${endTime}`;
 }
 
 function _buildContactText() {
@@ -1404,13 +1459,15 @@ function _buildContactText() {
   const processing = $("#contact-processing").value;
   const timeStart = _getTimePicker("contact-time-start");
   const timeEnd = _getTimePicker("contact-time-end");
+  const dateStart = _getDatePicker("contact-start");
+  const dateEnd = _getDatePicker("contact-end");
 
   if (!device) {
     showToast("Thiếu thông tin", "Vui lòng nhập tên thiết bị.");
     return null;
   }
 
-  const timeStr = _formatContactRecoveryTime(timeStart, timeEnd);
+  const timeStr = _formatContactRecoveryTime(timeStart, dateStart, timeEnd, dateEnd);
   return (
     `Dear anh/ chị tại site, em xin phép cập nhập tình trạng thiết bị:\n` +
     `+ Tên thiết bị liên quan: ${device}\n` +
@@ -1432,6 +1489,12 @@ function openContactModal() {
   if (deviceInput && device) deviceInput.value = device;
   if (timeStart) _setTimePicker("contact-time-start", timeStart);
 
+  // Clear date pickers when opening modal
+  const startDateInput = $("#contact-start-date");
+  const endDateInput = $("#contact-end-date");
+  if (startDateInput) startDateInput.value = "";
+  if (endDateInput) endDateInput.value = "";
+
   // Bind submit moi lan mo de tranh mat onclick
   const btn = $("#contact-submit");
   if (btn) {
@@ -1443,6 +1506,16 @@ function openContactModal() {
       setOutputText(text);
       fillBox(1);
       startCountdown();
+
+      // Reset fields
+      if (startDateInput) startDateInput.value = "";
+      if (endDateInput) endDateInput.value = "";
+      ["contact-time-start-h","contact-time-start-m",
+       "contact-time-end-h","contact-time-end-m"].forEach(id => {
+        const el = $(`#${id}`);
+        if (el) el.value = "";
+      });
+
       closeModal("contact");
     };
   }
@@ -1456,6 +1529,12 @@ function bindContactModal() {
     setOutputText(text);
     fillBox(1);
     startCountdown();
+
+    // Reset fields
+    const startDateInput = $("#contact-start-date");
+    const endDateInput = $("#contact-end-date");
+    if (startDateInput) startDateInput.value = "";
+    if (endDateInput) endDateInput.value = "";
 
     // Reset time pickers
     ["contact-time-start-h","contact-time-start-m",
@@ -1572,7 +1651,9 @@ function bindStatusModal() {
 
 /* ── Notification modal ─────────────────────────────────────── */
 function bindNotificationForm() {
-  $("#notif-submit").onclick = async () => {
+  const btn = $("#notif-submit");
+  if (!btn) return;
+  btn.onclick = async () => {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const body = {
@@ -1589,7 +1670,7 @@ function bindNotificationForm() {
       const res = await apiFetch("/api/notification", { method: "POST", body: JSON.stringify(body) });
       if (res.error) { showToast("Lỗi", res.error); return; }
       setOutputText(res.text);
-      closeModal("notification");
+      closeModal("note");
     } catch { showToast("Lỗi", "Không thể kết nối API"); }
   };
 }
@@ -1607,131 +1688,572 @@ function bindNoteTabs() {
   });
 }
 
-function parseTimesInput(val) {
-  return val.split(",").map(t => t.trim()).filter(Boolean);
-}
-function parseDaysInput(val) {
-  if (val.trim().toLowerCase() === "all") return Array.from({length:31}, (_,i)=>String(i+1));
-  return val.split(",").map(t => t.trim()).filter(Boolean);
-}
-function parseMonthsInput(val) {
-  if (val.trim().toLowerCase() === "all") return Array.from({length:12}, (_,i)=>String(i+1));
-  return val.split(",").map(t => t.trim()).filter(Boolean);
-}
+function initNoteFormGrids() {
+  // Render Days checkbox grid (1 to 31)
+  const daysGrid = $("#note-days-grid");
+  if (daysGrid) {
+    daysGrid.innerHTML = "";
+    for (let d = 1; d <= 31; d++) {
+      const val = String(d);
+      const label = document.createElement("label");
+      label.innerHTML = `<input type="checkbox" name="note-day-cb" value="${val}"> ${val}`;
+      daysGrid.appendChild(label);
+    }
+  }
 
-function _expandTimes(baseTimesStr, repeatCount, intervalMin) {
-  // Tu cac gio goc, sinh them cac gio nhac tiep theo
-  const baseTimes = parseTimesInput(baseTimesStr);
-  const all = [];
-  baseTimes.forEach(t => {
-    const [h, m] = t.split(":").map(Number);
-    for (let i = 0; i < repeatCount; i++) {
-      const total = h * 60 + m + i * intervalMin;
-      const nh = Math.floor(total / 60) % 24;
-      const nm = total % 60;
-      all.push(`${String(nh).padStart(2,"0")}:${String(nm).padStart(2,"0")}`);
+  // Render Months checkbox grid (1 to 12)
+  const monthsGrid = $("#note-months-grid");
+  if (monthsGrid) {
+    monthsGrid.innerHTML = "";
+    for (let m = 1; m <= 12; m++) {
+      const val = String(m);
+      const label = document.createElement("label");
+      label.innerHTML = `<input type="checkbox" name="note-month-cb" value="${val}"> T${val}`;
+      monthsGrid.appendChild(label);
+    }
+  }
+
+  // Bind Days select all
+  const daysAll = $("#note-days-all");
+  if (daysAll) {
+    daysAll.onchange = function() {
+      const cbs = $$("#note-days-grid input[type='checkbox']");
+      cbs.forEach(cb => {
+        cb.checked = this.checked;
+        cb.parentElement.classList.toggle("checked", this.checked);
+      });
+    };
+  }
+
+  // Bind Months select all
+  const monthsAll = $("#note-months-all");
+  if (monthsAll) {
+    monthsAll.onchange = function() {
+      const cbs = $$("#note-months-grid input[type='checkbox']");
+      cbs.forEach(cb => {
+        cb.checked = this.checked;
+        cb.parentElement.classList.toggle("checked", this.checked);
+      });
+    };
+  }
+  
+  // Tag-along updates for "Select All" on individual checkbox changes
+  document.addEventListener("change", e => {
+    if (e.target && e.target.name === "note-day-cb") {
+      const cbs = $$("#note-days-grid input[type='checkbox']");
+      if (daysAll) daysAll.checked = cbs.every(cb => cb.checked);
+      e.target.parentElement.classList.toggle("checked", e.target.checked);
+    }
+    if (e.target && e.target.name === "note-month-cb") {
+      const cbs = $$("#note-months-grid input[type='checkbox']");
+      if (monthsAll) monthsAll.checked = cbs.every(cb => cb.checked);
+      e.target.parentElement.classList.toggle("checked", e.target.checked);
     }
   });
-  // Loai trung lap
-  return [...new Set(all)];
+}
+
+function updateNoteTimeTagsUI() {
+  const container = $("#note-time-tags");
+  if (!container) return;
+  container.innerHTML = "";
+  
+  // Sort times ascending for better display
+  state.noteTimeTags.sort();
+  
+  state.noteTimeTags.forEach(t => {
+    const tag = document.createElement("span");
+    tag.className = "time-tag";
+    tag.innerHTML = `
+      <span>${t}</span>
+      <span class="remove-time-btn" data-time="${t}">&times;</span>
+    `;
+    container.appendChild(tag);
+  });
+
+  // Bind remove buttons
+  $$(".remove-time-btn", container).forEach(btn => {
+    btn.onclick = () => {
+      const timeToRemove = btn.dataset.time;
+      state.noteTimeTags = state.noteTimeTags.filter(t => t !== timeToRemove);
+      updateNoteTimeTagsUI();
+    };
+  });
+}
+
+function resetNoteForm() {
+  state.editingNoteStt = null;
+  state.noteTimeTags = [];
+  updateNoteTimeTagsUI();
+  
+  $("#note-keyword").value = "";
+  $("#note-content").value = "";
+  $("#note-emails").value = "";
+  $("#note-time-input").value = "";
+  $("#note-repeat-count").value = "1";
+  $("#note-repeat-interval").value = "5";
+  $("#note-mode").value = "Cố định";
+  $("#note-delete-mode").value = "delete";
+  
+  // Uncheck grids
+  $$("#note-days-grid input[type='checkbox']").forEach(cb => {
+    cb.checked = false;
+    cb.parentElement.classList.remove("checked");
+  });
+  $$("#note-months-grid input[type='checkbox']").forEach(cb => {
+    cb.checked = false;
+    cb.parentElement.classList.remove("checked");
+  });
+  if ($("#note-days-all")) $("#note-days-all").checked = false;
+  if ($("#note-months-all")) $("#note-months-all").checked = false;
+
+  // Reset text/buttons
+  $("#note-form-title").textContent = "Tạo Nhắc Nhở Mới";
+  $("#note-create-submit").textContent = "Thêm Nhắc";
+  $("#note-edit-cancel").classList.add("hidden");
+
+  // Sync user email chips
+  syncUserEmailChips();
+}
+
+async function loadUserEmailsList() {
+  try {
+    const users = await apiFetch("/api/auth/users");
+    state.userEmails = users || [];
+    renderUserEmailChips();
+  } catch (err) {
+    console.error("Failed to load user emails list", err);
+  }
+}
+
+function renderUserEmailChips() {
+  const container = $("#note-user-select-container");
+  if (!container) return;
+  container.innerHTML = "";
+  
+  if (state.userEmails.length === 0) {
+    container.innerHTML = `<span style="font-size:12px; color:var(--text-muted); padding:4px;">Không có email người dùng để chọn.</span>`;
+    return;
+  }
+  
+  state.userEmails.forEach(u => {
+    const chip = document.createElement("span");
+    chip.className = "user-email-chip";
+    chip.dataset.email = u.email;
+    chip.innerHTML = `<i class="far fa-user"></i> ${u.name} (${u.email})`;
+    chip.onclick = () => toggleUserEmailSelection(u.email);
+    container.appendChild(chip);
+  });
+  
+  syncUserEmailChips();
+}
+
+function toggleUserEmailSelection(email) {
+  const input = $("#note-emails");
+  if (!input) return;
+  let emails = input.value.split(",").map(e => e.trim()).filter(Boolean);
+  
+  if (emails.includes(email)) {
+    emails = emails.filter(e => e !== email);
+  } else {
+    emails.push(email);
+  }
+  
+  input.value = emails.join(", ");
+  syncUserEmailChips();
+}
+
+function syncUserEmailChips() {
+  const input = $("#note-emails");
+  if (!input) return;
+  const emails = input.value.split(",").map(e => e.trim()).filter(Boolean);
+  
+  $$(".user-email-chip").forEach(chip => {
+    const email = chip.dataset.email;
+    if (emails.includes(email)) {
+      chip.classList.add("selected");
+    } else {
+      chip.classList.remove("selected");
+    }
+  });
 }
 
 function bindNoteCreate() {
-  $("#note-create-submit").onclick = async () => {
-    const repeatCount    = parseInt($("#note-repeat-count").value) || 1;
-    const intervalMin    = parseInt($("#note-repeat-interval").value) || 5;
-    const times  = _expandTimes($("#note-times").value, repeatCount, intervalMin);
-    const days   = parseDaysInput($("#note-days").value);
-    const months = parseMonthsInput($("#note-months").value);
-    const daysRaw   = $("#note-days").value.trim().toLowerCase();
-    const monthsRaw = $("#note-months").value.trim().toLowerCase();
-    const daysIsAll   = daysRaw === "all";
-    const monthsIsAll = monthsRaw === "all";
+  // Initialize grids first
+  initNoteFormGrids();
 
-    // Neu co bat ky truong nao la All -> khong xoa (con nhac lai)
-    // Chi xoa khi ca ngay va thang deu cu the (1 lan duy nhat)
-    const isRecurring = daysIsAll || monthsIsAll;
+  // Bind input on note-emails
+  const inputEmails = $("#note-emails");
+  if (inputEmails) {
+    inputEmails.addEventListener("input", syncUserEmailChips);
+  }
+
+  // Add Time button
+  const btnAddTime = $("#btn-add-time");
+  if (btnAddTime) {
+    btnAddTime.onclick = () => {
+      const timeVal = $("#note-time-input").value;
+      if (!timeVal) return;
+      if (state.noteTimeTags.includes(timeVal)) {
+        showToast("Lỗi", "Giờ này đã được thêm.");
+        return;
+      }
+      state.noteTimeTags.push(timeVal);
+      updateNoteTimeTagsUI();
+      $("#note-time-input").value = "";
+    };
+  }
+
+  // Cancel Edit button
+  const btnCancelEdit = $("#note-edit-cancel");
+  if (btnCancelEdit) {
+    btnCancelEdit.onclick = () => {
+      resetNoteForm();
+      showToast("Thông tin", "Đã hủy chế độ chỉnh sửa.");
+    };
+  }
+
+  // Form Submit
+  $("#note-create-submit").onclick = async () => {
+    const keyword = $("#note-keyword").value.trim();
+    const content = $("#note-content").value.trim();
+    const emailsRaw = $("#note-emails").value.trim();
+    
+    // Parse emails
+    const emails = emailsRaw ? emailsRaw.split(",").map(e => e.trim()).filter(Boolean) : [];
+    
+    // Collect days
+    const days = $$("#note-days-grid input[type='checkbox']:checked").map(cb => cb.value);
+    
+    // Collect months
+    const months = $$("#note-months-grid input[type='checkbox']:checked").map(cb => cb.value);
+    
+    const repeat_count = parseInt($("#note-repeat-count").value) || 1;
+    const repeat_interval = parseInt($("#note-repeat-interval").value) || 5;
+    const mode = $("#note-mode").value;
+    const delete_mode = $("#note-delete-mode").value;
+
+    // Validations
+    if (!keyword || !content) {
+      showToast("Thiếu thông tin", "Vui lòng nhập Từ khóa và Nội dung nhắc nhở.");
+      return;
+    }
+    if (state.noteTimeTags.length === 0) {
+      showToast("Thiếu thông tin", "Vui lòng thêm ít nhất một giờ nhắc.");
+      return;
+    }
+    if (days.length === 0) {
+      showToast("Thiếu thông tin", "Vui lòng chọn ít nhất một ngày báo.");
+      return;
+    }
+    if (months.length === 0) {
+      showToast("Thiếu thông tin", "Vui lòng chọn ít nhất một tháng báo.");
+      return;
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const email of emails) {
+      if (!emailRegex.test(email)) {
+        showToast("Sai định dạng", `Email "${email}" không đúng định dạng.`);
+        return;
+      }
+    }
 
     const body = {
-      keyword:     $("#note-keyword").value.trim(),
-      content:     $("#note-content").value.trim(),
-      times, days, months,
-      mode:        isRecurring ? "Cố định" : "1 lần",
-      delete_mode: isRecurring ? "keep"    : "delete",
+      keyword,
+      content,
+      times: state.noteTimeTags,
+      days,
+      months,
+      mode,
+      delete_mode,
+      repeat_count,
+      repeat_interval,
+      emails,
+      paused: false
     };
-    if (!body.keyword || !body.content) { showToast("Thiếu thông tin", "Nhập keyword và nội dung."); return; }
-    if (!body.times.length)             { showToast("Thiếu thông tin", "Nhập giờ báo."); return; }
-    if (!body.days.length)              { showToast("Thiếu thông tin", "Nhập ngày báo."); return; }
-    if (!body.months.length)            { showToast("Thiếu thông tin", "Nhập tháng báo."); return; }
+
+    const isEdit = state.editingNoteStt !== null;
+    const path = isEdit ? `/api/notes/${state.editingNoteStt}` : "/api/notes";
+    const method = isEdit ? "PUT" : "POST";
+
     try {
-      const res = await apiFetch("/api/notes", { method: "POST", body: JSON.stringify(body) });
-      if (res.error) { showToast("Lỗi", res.error); return; }
-      showToast("Thành công", `Đã tạo note #${res.stt} (${times.length} lần nhắc: ${times.join(", ")})`);
-      ["note-keyword","note-content","note-times","note-days","note-months"].forEach(id => $(`#${id}`).value = "");
-      loadNotesList();
-    } catch { showToast("Lỗi", "Không thể kết nối API"); }
+      const res = await apiFetch(path, { method, body: JSON.stringify(body) });
+      if (res.error) {
+        showToast("Lỗi", res.error);
+        return;
+      }
+      
+      showToast("Thành công", isEdit ? `Đã cập nhật note #${res.stt}` : `Đã tạo nhắc nhở thành công!`);
+      
+      resetNoteForm();
+      
+      // Chuyển sang tab Xem Note
+      const tabView = $("#tab-note-view");
+      if (tabView) tabView.click();
+    } catch (err) {
+      showToast("Lỗi", "Không thể kết nối đến máy chủ.");
+    }
   };
 }
 
+function getNextTriggerTimeStr(note) {
+  if (note.done) return "Đã xong";
+  if (note.paused) return "Tạm dừng";
+  
+  const now = new Date();
+  let closestTrigger = null;
+  const currentYear = now.getFullYear();
+
+  // Kiểm tra thời gian kích hoạt dự kiến cho năm nay và năm sau
+  for (let year = currentYear; year <= currentYear + 1; year++) {
+    for (const monthStr of note.months) {
+      const month = parseInt(monthStr) - 1; // 0-11
+      for (const dayStr of note.days) {
+        const day = parseInt(dayStr);
+        for (const timeStr of note.times) {
+          const [h, m] = timeStr.split(":").map(Number);
+          const triggerDate = new Date(year, month, day, h, m, 0, 0);
+          
+          // Kiểm tra ngày có hợp lệ hay không (tránh tràn ngày như 30/2)
+          if (triggerDate.getFullYear() === year && triggerDate.getMonth() === month && triggerDate.getDate() === day) {
+            if (triggerDate > now) {
+              if (!closestTrigger || triggerDate < closestTrigger) {
+                closestTrigger = triggerDate;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  if (!closestTrigger) return "Hết hạn";
+  
+  const diffMs = closestTrigger - now;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) {
+    return `Còn ${diffMins} phút`;
+  }
+  const diffHours = Math.floor(diffMins / 60);
+  const remMins = diffMins % 60;
+  if (diffHours < 24) {
+    return `Còn ${diffHours}g ${remMins}p`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  const remHours = diffHours % 24;
+  return `Còn ${diffDays}n ${remHours}g`;
+}
+
 async function loadNotesList() {
+  const loading = $("#note-table-loading");
+  const table = $("#note-list-table");
+  const empty = $("#note-empty-state");
+  
+  if (loading) loading.style.display = "block";
+  if (table) table.style.display = "none";
+  if (empty) empty.style.display = "none";
+
   try {
     const notes = await apiFetch("/api/notes");
     state.notesList = notes;
+    
+    // Cập nhật số lượng Badge trên thanh menu (các note đang hoạt động)
+    const activeNotesCount = notes.filter(n => !n.done && !n.paused).length;
+    const badge = $("#note-badge");
+    if (badge) {
+      if (activeNotesCount > 0) {
+        badge.textContent = activeNotesCount;
+        badge.classList.remove("hidden");
+      } else {
+        badge.classList.add("hidden");
+      }
+    }
+
     renderNotesTable(notes);
-  } catch { showToast("Lỗi", "Không tải được danh sách notes"); }
+  } catch (err) {
+    showToast("Lỗi", "Không tải được danh sách notes");
+  } finally {
+    if (loading) loading.style.display = "none";
+  }
 }
 
 function renderNotesTable(notes) {
   const tbody = $("#notes-tbody");
+  if (!tbody) return;
   tbody.innerHTML = "";
-  const now = new Date();
+  
+  const table = $("#note-list-table");
+  const empty = $("#note-empty-state");
+
+  if (notes.length === 0) {
+    if (table) table.style.display = "none";
+    if (empty) empty.style.display = "block";
+    return;
+  }
+
+  if (table) table.style.display = "table";
+  if (empty) empty.style.display = "none";
 
   notes.forEach(n => {
     const tr = document.createElement("tr");
 
-    // Row tag
+    // Row styles
     let rowClass = "";
-    if (n.mode === "1 lần") {
-      const hasValid = n.months.some(m => n.days.some(d => n.times.some(t => {
-        try {
-          const [h, mn] = t.split(":").map(Number);
-          const dt = new Date(now.getFullYear(), Number(m)-1, Number(d), h, mn);
-          return dt >= now;
-        } catch { return false; }
-      })));
-      rowClass = (hasValid && !n.done) ? "tag-valid" : "tag-expired";
+    if (n.done) {
+      rowClass = "tag-done";
+    } else if (n.paused) {
+      rowClass = ""; // Normal look for paused
+    } else if (n.mode === "1 lần") {
+      rowClass = "tag-valid";
     } else {
       rowClass = "tag-recurring";
     }
-    if (n.done) rowClass = "tag-done";
     tr.className = rowClass;
+
+    // Status Badge
+    let statusBadgeHtml = "";
+    if (n.done) {
+      statusBadgeHtml = `<span class="status-badge done-status">Xong</span>`;
+    } else if (n.paused) {
+      statusBadgeHtml = `<span class="status-badge paused-status">Tắt</span>`;
+    } else {
+      statusBadgeHtml = `<span class="status-badge active-status">Bật</span>`;
+    }
+
+    // Nhắc tiếp
+    const nextTrigger = getNextTriggerTimeStr(n);
+
+    // Emails recipient list
+    const emailsStr = n.emails && n.emails.length > 0 ? n.emails.join(", ") : "-";
 
     tr.innerHTML = `
       <td>${n.stt}</td>
-      <td>${n.keyword}</td>
-      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${n.content}">${n.content}</td>
-      <td style="font-size:11px;">${n.times.join(", ")}</td>
-      <td>${n.days.join(", ")}</td>
-      <td>${n.months.join(", ")}</td>
-      <td><button class="delete-row-btn" data-stt="${n.stt}">✕</button></td>
+      <td style="font-weight: 600; color: var(--text-primary);">${n.keyword}</td>
+      <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${n.content}">${n.content}</td>
+      <td style="font-size:11px; font-weight: 500;">${n.times.join(", ")}</td>
+      <td>${n.days.length === 31 ? "Tất cả" : n.days.join(", ")}</td>
+      <td>${n.months.length === 12 ? "Tất cả" : n.months.join(", ")}</td>
+      <td style="max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${emailsStr}">${emailsStr}</td>
+      <td>${statusBadgeHtml}</td>
+      <td style="font-size:12px; font-weight:500;">${nextTrigger}</td>
+      <td style="text-align:center;">
+        <button class="action-icon-btn edit-btn" data-stt="${n.stt}" title="Sửa"><i class="fas fa-edit"></i></button>
+        ${n.paused 
+          ? `<button class="action-icon-btn resume-btn" data-stt="${n.stt}" title="Kích hoạt"><i class="fas fa-play"></i></button>`
+          : `<button class="action-icon-btn pause-btn" data-stt="${n.stt}" title="Tạm dừng"><i class="fas fa-pause"></i></button>`
+        }
+        <button class="delete-row-btn" data-stt="${n.stt}" title="Xóa"><i class="fas fa-trash-alt"></i></button>
+      </td>
     `;
     tbody.appendChild(tr);
   });
 
-  // Delete buttons
+  // Bind Actions inside Table
+  $$(".edit-btn", tbody).forEach(btn => {
+    btn.onclick = () => {
+      const stt = parseInt(btn.dataset.stt);
+      const note = state.notesList.find(n => n.stt === stt);
+      if (note) editNote(note);
+    };
+  });
+
+  $$(".pause-btn", tbody).forEach(btn => {
+    btn.onclick = async () => {
+      const stt = parseInt(btn.dataset.stt);
+      await togglePauseResume(stt, "pause");
+    };
+  });
+
+  $$(".resume-btn", tbody).forEach(btn => {
+    btn.onclick = async () => {
+      const stt = parseInt(btn.dataset.stt);
+      await togglePauseResume(stt, "resume");
+    };
+  });
+
   $$(".delete-row-btn", tbody).forEach(btn => {
     btn.onclick = async () => {
-      if (!confirm(`Xóa note #${btn.dataset.stt}?`)) return;
+      const stt = btn.dataset.stt;
+      if (!confirm(`Bạn có chắc chắn muốn xóa nhắc nhở #${stt}?`)) return;
       try {
-        await apiFetch(`/api/notes/${btn.dataset.stt}`, { method: "DELETE" });
+        const res = await apiFetch(`/api/notes/${stt}`, { method: "DELETE" });
+        if (res.error) {
+          showToast("Lỗi", res.error);
+          return;
+        }
+        showToast("Thành công", `Đã xóa nhắc nhở #${stt}`);
         loadNotesList();
-      } catch { showToast("Lỗi", "Không xóa được"); }
+      } catch (err) {
+        showToast("Lỗi", "Không xóa được");
+      }
     };
   });
 }
 
+function editNote(note) {
+  state.editingNoteStt = note.stt;
+  
+  // Điền dữ liệu vào form
+  $("#note-keyword").value = note.keyword;
+  $("#note-content").value = note.content;
+  $("#note-emails").value = note.emails ? note.emails.join(", ") : "";
+  $("#note-repeat-count").value = note.repeat_count || 1;
+  $("#note-repeat-interval").value = note.repeat_interval || 5;
+  $("#note-mode").value = note.mode || "Cố định";
+  $("#note-delete-mode").value = note.delete_mode || "delete";
+  
+  // Load times
+  state.noteTimeTags = [...note.times];
+  updateNoteTimeTagsUI();
+  
+  // Check checkboxes trong grid ngày
+  $$("#note-days-grid input[type='checkbox']").forEach(cb => {
+    cb.checked = note.days.includes(cb.value);
+    cb.parentElement.classList.toggle("checked", cb.checked);
+  });
+  const allDays = $$("#note-days-grid input[type='checkbox']");
+  if ($("#note-days-all")) $("#note-days-all").checked = allDays.every(cb => cb.checked);
+  
+  // Check checkboxes trong grid tháng
+  $$("#note-months-grid input[type='checkbox']").forEach(cb => {
+    cb.checked = note.months.includes(cb.value);
+    cb.parentElement.classList.toggle("checked", cb.checked);
+  });
+  const allMonths = $$("#note-months-grid input[type='checkbox']");
+  if ($("#note-months-all")) $("#note-months-all").checked = allMonths.every(cb => cb.checked);
+  
+  // Đổi title và text button submit
+  $("#note-form-title").textContent = `Chỉnh sửa Nhắc Nhở #${note.stt}`;
+  $("#note-create-submit").textContent = "Cập nhật";
+  $("#note-edit-cancel").classList.remove("hidden");
+
+  // Sync user email chips
+  syncUserEmailChips();
+  
+  // Click tab Tạo Note để hiển thị form
+  const tabCreate = $("#tab-note-create");
+  if (tabCreate) tabCreate.click();
+}
+
+async function togglePauseResume(stt, action) {
+  try {
+    const res = await apiFetch(`/api/notes/${stt}/${action}`, { method: "PATCH" });
+    if (res.error) {
+      showToast("Lỗi", res.error);
+      return;
+    }
+    showToast("Thành công", action === "pause" ? `Đã tạm dừng note #${stt}` : `Đã kích hoạt lại note #${stt}`);
+    loadNotesList();
+  } catch (err) {
+    showToast("Lỗi", "Không thể kết nối API");
+  }
+}
+
 function bindNoteSearch() {
-  $("#note-search").addEventListener("input", function () {
+  const searchInput = $("#note-search");
+  if (!searchInput) return;
+  searchInput.addEventListener("input", function () {
     const kw = this.value.toLowerCase();
     const filtered = state.notesList.filter(n =>
       n.keyword.toLowerCase().includes(kw) || n.content.toLowerCase().includes(kw)
@@ -2025,9 +2547,9 @@ function startNotificationPoller() {
   function start() {
     if (_running) return;
     _running  = true;
-    // Poll ngay khi tab được mở lại (không chờ 30s)
+    // Poll ngay khi tab được mở lại (không chờ 15s)
     poll();
-    _pollTimer = setInterval(poll, 30000);
+    _pollTimer = setInterval(poll, 15000);
   }
 
   function stop() {
@@ -2073,6 +2595,7 @@ function bindGroupTabs() {
 /* ── Reminder overlay ───────────────────────────────────────── */
 const _reminderQueue = [];
 let _reminderShowing = false;
+let _currentReminder = null;
 
 function showReminder(keyword, content, time) {
   _reminderQueue.push({ keyword, content, time });
@@ -2082,10 +2605,13 @@ function showReminder(keyword, content, time) {
 function _showNextReminder() {
   if (_reminderQueue.length === 0) {
     _reminderShowing = false;
+    _currentReminder = null;
     return;
   }
   _reminderShowing = true;
-  const { keyword, content, time } = _reminderQueue.shift();
+  const reminder = _reminderQueue.shift();
+  _currentReminder = reminder;
+  const { keyword, content, time } = reminder;
   $("#reminder-keyword").textContent = keyword;
   $("#reminder-content").textContent = content;
   $("#reminder-time").textContent    = `⏰ ${time}`;
@@ -2096,6 +2622,17 @@ function closeReminder() {
   $("#reminder-overlay").classList.remove("open");
   // Hien cai tiep theo neu con trong queue
   setTimeout(_showNextReminder, 300);
+}
+
+function snoozeReminder() {
+  if (!_currentReminder) return;
+  const reminderToSnooze = { ..._currentReminder };
+  closeReminder();
+  
+  // Nhắc lại sau 5 phút
+  setTimeout(() => {
+    showReminder(reminderToSnooze.keyword, reminderToSnooze.content, reminderToSnooze.time);
+  }, 5 * 60 * 1000);
 }
 
 /* ── Charts ────────────────────────────────────────────────── */

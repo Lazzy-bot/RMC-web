@@ -1,9 +1,11 @@
 import json
 import os
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 
+import requests as _requests
 from authlib.integrations.flask_client import OAuth
 from flask import session
 
@@ -66,6 +68,82 @@ def _public_user(user: dict) -> dict:
         "created_at": user.get("created_at"),
         "last_login_at": user.get("last_login_at"),
     }
+
+
+# ============================================================
+# Microsoft Graph Token helpers
+# ============================================================
+
+def get_ms_token_from_session() -> str | None:
+    """Lấy Microsoft access_token từ Flask session của request hiện tại."""
+    return session.get("ms_access_token")
+
+
+def save_ms_refresh_token_for_user(user_id: str, refresh_token: str) -> None:
+    """Lưu Microsoft refresh_token vào users.json để dùng lúc offline (scheduler)."""
+    if not refresh_token or not user_id:
+        return
+    with _db_lock:
+        db = _read_db()
+        user = next((u for u in db["users"] if u.get("id") == user_id), None)
+        if user:
+            user["ms_refresh_token"] = refresh_token
+            _write_db(db)
+
+
+def get_ms_refresh_token_for_user(user_id: str) -> str | None:
+    """Đọc Microsoft refresh_token của user từ users.json."""
+    with _db_lock:
+        db = _read_db()
+        user = next((u for u in db["users"] if u.get("id") == user_id), None)
+        return user.get("ms_refresh_token") if user else None
+
+
+def get_ms_refresh_token_by_email(email: str) -> str | None:
+    """Đọc Microsoft refresh_token theo email."""
+    email = _normalize_email(email)
+    with _db_lock:
+        db = _read_db()
+        user = next((u for u in db["users"] if _normalize_email(u.get("email", "")) == email), None)
+        return user.get("ms_refresh_token") if user else None
+
+
+def get_any_ms_refresh_token() -> tuple[str | None, str | None]:
+    """Tìm bất kỳ refresh token Microsoft nào có sẵn trong users.json."""
+    with _db_lock:
+        db = _read_db()
+        for u in db.get("users", []):
+            rt = u.get("ms_refresh_token")
+            if rt:
+                return rt, u.get("email")
+    return None, None
+
+
+def refresh_ms_access_token(refresh_token: str) -> str | None:
+    """
+    Dùng refresh_token để lấy access_token mới từ Microsoft.
+    Trả về access_token mới hoặc None nếu thất bại.
+    """
+    from config import MS_OAUTH_CLIENT_ID, MS_OAUTH_CLIENT_SECRET, MS_OAUTH_TENANT_ID
+    if not refresh_token:
+        return None
+    try:
+        token_url = f"https://login.microsoftonline.com/{MS_OAUTH_TENANT_ID}/oauth2/v2.0/token"
+        resp = _requests.post(token_url, data={
+            "grant_type":    "refresh_token",
+            "client_id":     MS_OAUTH_CLIENT_ID,
+            "client_secret": MS_OAUTH_CLIENT_SECRET,
+            "refresh_token": refresh_token,
+            "scope":         "openid profile email User.Read Mail.Send offline_access",
+        }, timeout=15)
+        data = resp.json()
+        if "access_token" in data:
+            # Nếu Microsoft trả về refresh_token mới thì cần cập nhật lại
+            return data["access_token"], data.get("refresh_token", refresh_token)
+        print(f"[GraphToken] refresh failed: {data.get('error')} – {data.get('error_description', '')[:200]}")
+    except Exception as e:
+        print(f"[GraphToken] exception during refresh: {e}")
+    return None, None
 
 
 def _ensure_admin_seed(db: dict) -> bool:
@@ -227,7 +305,7 @@ def list_users() -> list[dict]:
         return [_public_user(u) for u in db.get("users", [])]
 
 
-def set_session_user(user: dict) -> None:
+def set_session_user(user: dict, ms_access_token: str = None) -> None:
     session["current_user"] = {
         "id": user.get("id"),
         "email": user.get("email"),
@@ -236,10 +314,13 @@ def set_session_user(user: dict) -> None:
         "role": user.get("role", "user"),
         "approved": bool(user.get("approved", False)),
     }
+    if ms_access_token:
+        session["ms_access_token"] = ms_access_token
 
 
 def clear_session_user() -> None:
     session.pop("current_user", None)
+    session.pop("ms_access_token", None)
 
 
 def get_session_user() -> dict | None:

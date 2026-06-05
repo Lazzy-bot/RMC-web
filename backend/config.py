@@ -224,6 +224,17 @@ RATE_LIMIT_ADMIN_BLOCK  = int(os.getenv("RATE_LIMIT_ADMIN_BLOCK",  "120"))
 
 
 # ============================================================
+# SMTP Configuration for Email Reminders (Outlook/Office 365)
+# ============================================================
+SMTP_HOST     = os.getenv("SMTP_HOST", "")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER     = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_SENDER   = os.getenv("SMTP_SENDER", SMTP_USER)
+SMTP_SECURE   = os.getenv("SMTP_SECURE", "tls").lower() # tls, ssl, or none
+
+
+# ============================================================
 # Create all local directories on import
 # ============================================================
 for _dir in [

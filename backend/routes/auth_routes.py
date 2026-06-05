@@ -13,6 +13,8 @@ from auth import (
     get_session_user,
     graph_session,
     list_users,
+    refresh_ms_access_token,
+    save_ms_refresh_token_for_user,
     set_session_user,
     update_user_role,
     upsert_user_from_oauth,
@@ -79,10 +81,44 @@ def login(provider: str):
         redirect_uri = f"{PUBLIC_BASE_URL}/api/auth/callback/{provider}"
     else:
         redirect_uri = url_for("auth.auth_callback", provider=provider, _external=True)
+
+    # Với Microsoft: Đã cấp quyền trên Azure, request luôn Mail.Send
+    if provider == "microsoft":
+        return client.authorize_redirect(
+            redirect_uri,
+            scope="openid profile email User.Read Mail.Send offline_access",
+            prompt="select_account",
+        )
     return client.authorize_redirect(redirect_uri)
 
 
-def _ms_exchange_code(code: str, redirect_uri: str) -> dict:
+@auth_bp.get("/grant-mail-send")
+def grant_mail_send():
+    """
+    Endpoint đặc biệt để xin quyền Mail.Send incremental consent.
+    Frontend gọi sau khi login thành công nếu muốn bật tính năng gửi mail.
+    """
+    user = get_session_user()
+    if not user:
+        return jsonify({"error": "Chưa đăng nhập"}), 401
+
+    if PUBLIC_BASE_URL:
+        redirect_uri = f"{PUBLIC_BASE_URL}/api/auth/callback/microsoft"
+    else:
+        redirect_uri = url_for("auth.auth_callback", provider="microsoft", _external=True)
+
+    client = get_oauth_client("microsoft")
+    if not client:
+        return jsonify({"error": "Microsoft chưa được cấu hình"}), 400
+
+    return client.authorize_redirect(
+        redirect_uri,
+        scope="openid profile email User.Read Mail.Send offline_access",
+        prompt="consent",
+    )
+
+
+def _ms_exchange_code(code: str, redirect_uri: str, scope: str = None) -> dict:
     """
     Thực hiện token exchange với Microsoft trực tiếp bằng requests.post.
     Đảm bảo client_secret luôn nằm trong POST body (AADSTS7000218 fix).
@@ -105,7 +141,7 @@ def _ms_exchange_code(code: str, redirect_uri: str) -> dict:
             "client_secret": MS_OAUTH_CLIENT_SECRET,
             "code":          code,
             "redirect_uri":  redirect_uri,
-            "scope":         "openid profile email User.Read",
+            "scope":         scope or "openid profile email User.Read offline_access",
         },
         timeout=15,
     )
@@ -117,7 +153,7 @@ def _ms_exchange_code(code: str, redirect_uri: str) -> dict:
             f"MS token exchange error: {token.get('error')} – "
             f"{token.get('error_description', '')}"
         )
-    print(f"[MS EXCHANGE] SUCCESS token_type={token.get('token_type')}", flush=True)
+    print(f"[MS EXCHANGE] SUCCESS token_type={token.get('token_type')} has_refresh={bool(token.get('refresh_token'))}", flush=True)
     return token
 
 
@@ -154,7 +190,14 @@ def auth_callback(provider: str):
             token = client.authorize_access_token()
 
         user = upsert_user_from_oauth(provider, token, client)
-        set_session_user(user)
+
+        # Lưu MS access_token vào session và refresh_token vào users.json
+        ms_access_token = token.get("access_token") if provider == "microsoft" else None
+        ms_refresh_token = token.get("refresh_token") if provider == "microsoft" else None
+        set_session_user(user, ms_access_token=ms_access_token)
+        if ms_refresh_token and user.get("id"):
+            save_ms_refresh_token_for_user(user["id"], ms_refresh_token)
+            print(f"[AUTH CALLBACK] Saved MS refresh_token for user {user.get('email')}", flush=True)
 
         if user.get("role") == "admin" or user.get("approved"):
             return redirect("/?auth=success")
@@ -163,6 +206,19 @@ def auth_callback(provider: str):
         print(f"[AUTH CALLBACK ERROR] provider={provider} error={e}", flush=True)
         print(traceback.format_exc(), flush=True)
         return redirect("/?auth=failed")
+
+
+@auth_bp.get("/users")
+def get_user_emails():
+    user = get_session_user()
+    if not _can_access(user):
+        return jsonify({"error": "Unauthorized"}), 401
+    all_users = list_users()
+    approved_users = [
+        {"name": u.get("name"), "email": u.get("email")}
+        for u in all_users if u.get("approved")
+    ]
+    return jsonify(approved_users)
 
 
 @auth_bp.get("/admin/users")

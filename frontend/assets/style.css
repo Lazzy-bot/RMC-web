@@ -1415,3 +1415,232 @@ input[list]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
     font-size: 13px !important;
   }
 }
+
+/* ── Additional styling for Note Upgrade & Email ──────────────── */
+.checkbox-grid-wrapper {
+  transition: border-color var(--transition);
+}
+/* Custom compact calendar chips for Days */
+#note-days-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px !important;
+}
+#note-days-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  transition: all var(--transition);
+  margin: 0 auto;
+}
+#note-days-grid label:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+#note-days-grid label.checked {
+  background: var(--accent);
+  color: #ffffff !important;
+  border-color: var(--accent);
+}
+#note-days-grid input[type="checkbox"] {
+  display: none !important;
+}
+
+/* Custom compact chips for Months */
+#note-months-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px !important;
+}
+#note-months-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+#note-months-grid label:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+}
+#note-months-grid label.checked {
+  background: var(--accent);
+  color: #ffffff !important;
+  border-color: var(--accent);
+}
+#note-months-grid input[type="checkbox"] {
+  display: none !important;
+}
+.time-picker-wrapper {
+  display: flex;
+  gap: 8px;
+}
+.time-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.time-tag {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.time-tag span.remove-time-btn {
+  cursor: pointer;
+  color: var(--red);
+  font-weight: bold;
+}
+.time-tag span.remove-time-btn:hover {
+  color: var(--red-hover);
+}
+.badge-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--red);
+  color: #ffffff;
+  border-radius: 50%;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 1;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+.note-loading-spinner {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.reminder-snooze {
+  padding: 12px 24px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  align-self: center;
+  min-width: 140px;
+  box-shadow: var(--shadow-sm);
+}
+.reminder-snooze:hover {
+  background: var(--border);
+  transform: translateY(-2px);
+}
+.reminder-snooze:active {
+  transform: scale(0.97);
+}
+.action-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.action-icon-btn.edit-btn {
+  color: var(--accent);
+}
+.action-icon-btn.edit-btn:hover {
+  background: var(--accent-dim);
+}
+.action-icon-btn.pause-btn {
+  color: var(--orange);
+}
+.action-icon-btn.pause-btn:hover {
+  background: var(--orange-dim);
+}
+.action-icon-btn.resume-btn {
+  color: var(--green);
+}
+.action-icon-btn.resume-btn:hover {
+  background: var(--green-dim);
+}
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.status-badge.active-status {
+  background: var(--green-dim);
+  color: var(--green);
+}
+.status-badge.paused-status {
+  background: var(--orange-dim);
+  color: var(--orange);
+}
+.status-badge.done-status {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+/* User email selection chips */
+.user-email-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  max-height: 100px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+.user-email-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  user-select: none;
+}
+.user-email-chip:hover {
+  background: var(--border);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.user-email-chip.selected {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}

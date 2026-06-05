@@ -423,8 +423,9 @@ def get_comprehensive_dashboard_data(start_date=None, end_date=None, site_filter
         s_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d") if start_date else None
         e_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d") if end_date else None
         
+        import collections
         total_alarms = 0; total_downtime = 0; active_alarms = 0; resolved_alarms = 0; critical_alarms = 0
-        trends = {}; sev_c = {"High": 0, "Medium": 0, "Low": 0}; site_s = {}; top_d = {}; dev_t = {}; heatmap_data = {}; table = []
+        trends = {}; sev_c = {"High": 0, "Medium": 0, "Low": 0}; site_s = {}; top_d = {}; dev_t = {}; heatmap_data = {}; table = collections.deque(maxlen=50)
         
         for row in vals:
             if not row: continue
@@ -512,7 +513,7 @@ def get_comprehensive_dashboard_data(start_date=None, end_date=None, site_filter
             "top_devices": [{"name": k, "count": v} for k, v in top_devices],
             "severity": sev_c, "heatmap": h_s,
             "device_types": [{"type": k, "count": v} for k, v in dev_t.items()],
-            "table": table[::-1][:50]
+            "table": list(table)[::-1]
         }
     except Exception as e:
         _log(traceback.format_exc()); return {"error": str(e)}

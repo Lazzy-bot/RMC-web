@@ -124,16 +124,52 @@ def status_form():
     time_process = ""
     if start_time and end_time:
         try:
-            fmt      = "%H:%M"
-            start_dt = datetime.datetime.strptime(start_time, fmt)
-            end_dt   = datetime.datetime.strptime(end_time, fmt)
-            delta    = end_dt - start_dt
-            total_m  = int(delta.total_seconds() / 60)
-            if total_m < 0:
-                total_m += 1440
-            h, m     = divmod(total_m, 60)
-            time_process = f"{h} gio {m} phut" if h else f"{m} phut"
-        except ValueError:
+            def parse_dt(t_str, d_str):
+                if not t_str:
+                    return None
+                t_obj = None
+                for fmt in ["%H:%M:%S", "%H:%M"]:
+                    try:
+                        t_obj = datetime.datetime.strptime(t_str.strip(), fmt).time()
+                        break
+                    except ValueError:
+                        continue
+                if not t_obj:
+                    return None
+                d_obj = None
+                if d_str:
+                    for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"]:
+                        try:
+                            d_obj = datetime.datetime.strptime(d_str.strip(), fmt).date()
+                            break
+                        except ValueError:
+                            continue
+                if not d_obj:
+                    d_obj = datetime.date.today()
+                return datetime.datetime.combine(d_obj, t_obj)
+
+            start_dt = parse_dt(start_time, start_date)
+            end_dt = parse_dt(end_time, end_date)
+            if start_dt and end_dt:
+                delta = end_dt - start_dt
+                total_m = int(delta.total_seconds() / 60)
+                # Nếu không truyền ngày và thời gian âm → coi như cách nhau qua đêm trong 24h
+                if not start_date and not end_date and total_m < 0:
+                    total_m += 1440
+                
+                if total_m > 0:
+                    days, remainder = divmod(total_m, 1440)
+                    hours, minutes = divmod(remainder, 60)
+                    parts = []
+                    if days > 0:
+                        parts.append(f"{days} ngày")
+                    if hours > 0:
+                        parts.append(f"{hours} giờ")
+                    if minutes > 0:
+                        parts.append(f"{minutes} phút")
+                    time_process = " ".join(parts)
+        except Exception as e:
+            _log(f"Lỗi tính time_process: {e}")
             time_process = ""
 
     # Fill template

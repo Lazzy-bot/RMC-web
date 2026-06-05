@@ -298,10 +298,41 @@ def sync_config_from_cloud():
         synced = []
         
         for f in files:
-            if f["name"] in ["sites_v2.json", "devices.json", "pics.json", "users.json", "onedrive_metadata.json"]:
-                local_path = download_file(f, save_dir=METADATA_DIR, force=True)
-                if local_path:
-                    synced.append(f["name"])
+            if f["name"] in ["sites_v2.json", "devices.json", "pics.json", "users.json"]:
+                if f["name"] == "users.json":
+                    # Lưu lại token local trước khi download
+                    from config import USERS_DB_FILE
+                    import os, json
+                    local_tokens = {}
+                    if os.path.exists(USERS_DB_FILE):
+                        try:
+                            with open(USERS_DB_FILE, "r", encoding="utf-8") as file:
+                                old_data = json.load(file)
+                                for u in old_data.get("users", []):
+                                    if u.get("ms_refresh_token"):
+                                        local_tokens[u.get("id")] = u.get("ms_refresh_token")
+                        except: pass
+                        
+                    local_path = download_file(f, save_dir=METADATA_DIR, force=True)
+                    
+                    # Phục hồi token local vào file vừa download
+                    if local_path and os.path.exists(local_path):
+                        try:
+                            with open(local_path, "r", encoding="utf-8") as file:
+                                new_data = json.load(file)
+                            for u in new_data.get("users", []):
+                                uid = u.get("id")
+                                if uid in local_tokens:
+                                    u["ms_refresh_token"] = local_tokens[uid]
+                            with open(local_path, "w", encoding="utf-8") as file:
+                                json.dump(new_data, file, ensure_ascii=False, indent=2)
+                        except: pass
+                    if local_path:
+                        synced.append(f["name"])
+                else:
+                    local_path = download_file(f, save_dir=METADATA_DIR, force=True)
+                    if local_path:
+                        synced.append(f["name"])
         
         if not synced:
             return jsonify({"error": "Không tìm thấy file cấu hình trên OneDrive (thư mục METADATA)"}), 404
@@ -339,15 +370,18 @@ def push_config_to_cloud():
                 p_data = json.dumps(pics, ensure_ascii=False, indent=2)
                 upload_file("METADATA", "pics.json", p_data)
 
-                # Upload users and metadata cache
-                from config import USERS_DB_FILE, METADATA_FILE
-                import os
-                for local_f, cloud_n in [(USERS_DB_FILE, "users.json"), (METADATA_FILE, "onedrive_metadata.json")]:
-                    if os.path.exists(local_f):
-                        try:
-                            with open(local_f, "r", encoding="utf-8") as f:
-                                upload_file("METADATA", cloud_n, f.read())
-                        except: pass
+                # Upload users.json nhưng bỏ đi ms_refresh_token
+                from config import USERS_DB_FILE
+                import os, copy
+                if os.path.exists(USERS_DB_FILE):
+                    try:
+                        with open(USERS_DB_FILE, "r", encoding="utf-8") as f:
+                            users_data = json.load(f)
+                        users_data_clean = copy.deepcopy(users_data)
+                        for u in users_data_clean.get("users", []):
+                            u.pop("ms_refresh_token", None)
+                        upload_file("METADATA", "users.json", json.dumps(users_data_clean, ensure_ascii=False, indent=2))
+                    except: pass
             except Exception as e:
                 print(f"Error in bg_push: {e}")
                 

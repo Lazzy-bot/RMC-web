@@ -10,6 +10,8 @@ services:
       # Có thể override bằng biến DATA_DIR trong file .env (ví dụ máy B).
       - "${DATA_DIR:-C:/RMC_Assistant_ver2.0}:/data"
     environment:
+      # Set Timezone to VN
+      - TZ=Asia/Ho_Chi_Minh
       # Override đường dẫn data về /data trong container
       - RMC_BASE_DIR=/data
       # Auth app/session
@@ -23,6 +25,14 @@ services:
       - MS_OAUTH_TENANT_ID=${MS_OAUTH_TENANT_ID:-}
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+
+      # SMTP Configuration for Email Reminders
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_SENDER=${SMTP_SENDER:-}
+      - SMTP_SECURE=${SMTP_SECURE:-tls}
 
 
 
@@ -49,10 +59,10 @@ services:
              "import urllib.request, sys; \
               r = urllib.request.urlopen('http://localhost:5000/api/auth/providers', timeout=10); \
               sys.exit(0 if r.status == 200 else 1)"]
-      interval: 30s
-      timeout: 15s
+      interval: 15s
+      timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
 
   cloudflare-tunnel:
@@ -72,7 +82,7 @@ services:
     # FIX #6: Chạy ngrok qua http với domain tĩnh
     command: >
       http
-      --url=credible-goofiness-tile.ngrok-free.dev
+      --url=balance-rotting-blooming.ngrok-free.dev
       rmc-assistant:5000
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}

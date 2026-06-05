@@ -19,6 +19,10 @@ _site_files_cache: dict = {}  # {site_key: (data, loaded_at)}
 _cache_lock = threading.Lock()
 _CACHE_TTL = 300  # 5 phút
 
+# Lock tránh chạy sync song song gây tràn RAM và ghi đè file
+_sync_lock = threading.Lock()
+_is_syncing = False
+
 
 def _get_site_files(site_key: str) -> dict:
     """Lay va cache danh sach files cho mot site (TTL=5 phut)."""
@@ -116,32 +120,42 @@ def trigger_sync():
     Trigger đồng bộ toàn bộ files từ OneDrive.
     Chạy background thread, trả về ngay lập tức.
     """
+    global _is_syncing
+    with _sync_lock:
+        if _is_syncing:
+            return jsonify({"error": "Tiến trình đồng bộ đang chạy, vui lòng thử lại sau.", "code": "already_syncing"}), 409
+        _is_syncing = True
+
     def do_sync():
-        paths = [
-            NVL_REPORT_FORM_PATH, TQB_REPORT_FORM_PATH,
-            BDNC_REPORT_FORM_PATH, VG_REPORT_FORM_PATH,
-            MDR_REPORT_FORM_PATH, LACASTA_REPORT_FORM_PATH,
-            HOTLINES_AND_CONFIRM_FORM_PATH,
-        ]
-        for path in paths:
-            try:
-                sync_files_from_onedrive(path)
-            except Exception as e:
-                print(f"ERROR: Sync failed [{path}]: {e}")
-
-        # Clear site cache sau khi sync
-        with _cache_lock:
-            _site_files_cache.clear()
-
-        # FIX: Invalidate dashboard Excel cache sau sync để dữ liệu mới nhất được load
+        global _is_syncing
         try:
-            from services.excel import _dashboard_cache, _load_dashboard_raw
-            import threading
-            with _dashboard_cache["lock"]:
-                _dashboard_cache["loaded_at"] = 0.0  # Expire cache ngay
-            threading.Thread(target=_load_dashboard_raw, daemon=True).start()
-        except Exception as e:
-            print(f"WARN: Dashboard cache invalidation failed: {e}")
+            paths = [
+                NVL_REPORT_FORM_PATH, TQB_REPORT_FORM_PATH,
+                BDNC_REPORT_FORM_PATH, VG_REPORT_FORM_PATH,
+                MDR_REPORT_FORM_PATH, LACASTA_REPORT_FORM_PATH,
+                HOTLINES_AND_CONFIRM_FORM_PATH,
+            ]
+            for path in paths:
+                try:
+                    sync_files_from_onedrive(path)
+                except Exception as e:
+                    print(f"ERROR: Sync failed [{path}]: {e}")
+
+            # Clear site cache sau khi sync
+            with _cache_lock:
+                _site_files_cache.clear()
+
+            # FIX: Invalidate dashboard Excel cache sau sync để dữ liệu mới nhất được load
+            try:
+                from services.excel import _dashboard_cache, _load_dashboard_raw
+                with _dashboard_cache["lock"]:
+                    _dashboard_cache["loaded_at"] = 0.0  # Expire cache ngay
+                _load_dashboard_raw()
+            except Exception as e:
+                print(f"WARN: Dashboard cache invalidation failed: {e}")
+        finally:
+            with _sync_lock:
+                _is_syncing = False
 
     threading.Thread(target=do_sync, daemon=True).start()
     return jsonify({"message": "Đang đồng bộ ở background..."})

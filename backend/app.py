@@ -89,7 +89,7 @@ def create_app() -> Flask:
             return None
 
         # ── Rate Limiting ─────────────────────────────────────────────────
-        if RATE_LIMIT_ENABLED:
+        if RATE_LIMIT_ENABLED and client_ip not in ("127.0.0.1", "::1"):
             # 1. Brute-force protection cho login (per IP, rất nghiêm ngặt)
             if path.startswith("/api/auth/login/"):
                 allowed, retry_after = login_limiter.is_allowed(client_ip)
@@ -142,7 +142,7 @@ def create_app() -> Flask:
             return jsonify({"error": "Tài khoản đang chờ admin phê duyệt", "code": "pending_approval"}), 403
 
         # ── Per-user + Heavy endpoint limits (chỉ áp dụng sau khi xác thực) ──
-        if RATE_LIMIT_ENABLED:
+        if RATE_LIMIT_ENABLED and client_ip not in ("127.0.0.1", "::1"):
             user_key = user.get("email") or user.get("id") or client_ip
 
             # Per-user global throttle (admin bỏ qua)
@@ -212,6 +212,10 @@ def create_app() -> Flask:
 
     for bp in [auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, admin_mgmt_bp]:
         app.register_blueprint(bp)
+
+    @app.route("/favicon.ico")
+    def favicon():
+        return "", 204
 
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
