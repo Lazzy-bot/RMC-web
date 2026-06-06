@@ -370,18 +370,17 @@ def _get_raw_excel_data() -> dict:
     age     = now - _dashboard_cache["loaded_at"]
     has_data = _dashboard_cache["data"] is not None
 
-    if has_data and age < (_DASHBOARD_CACHE_TTL - _DASHBOARD_REFRESH_AHEAD):
-        # Cache còn mới → trả thẳng
+    if has_data:
+        # Cache đã có dữ liệu -> TRẢ THẲNG NGAY để không block UI của user.
+        # Nếu cache đã đến lúc cần làm mới (lớn hơn TTL - REFRESH_AHEAD, hoặc đã quá TTL),
+        # ta kích hoạt làm mới ở background thread.
+        if age >= (_DASHBOARD_CACHE_TTL - _DASHBOARD_REFRESH_AHEAD):
+            with _dashboard_cache["lock"]:
+                if not _dashboard_cache["is_loading"]:
+                    threading.Thread(target=_load_dashboard_raw, daemon=True).start()
         return _dashboard_cache["data"]
 
-    if has_data and age < _DASHBOARD_CACHE_TTL:
-        # Cache gần hết hạn → refresh ngầm, vẫn trả cache cũ ngay
-        with _dashboard_cache["lock"]:
-            if not _dashboard_cache["is_loading"]:
-                threading.Thread(target=_load_dashboard_raw, daemon=True).start()
-        return _dashboard_cache["data"]
-
-    # Cache quá cũ hoặc chưa có → load ngay (blocking) lần đầu
+    # Chỉ block duy nhất một lần đầu khi hoàn toàn chưa có cache (cold start)
     _load_dashboard_raw()
     return _dashboard_cache["data"] or {"values": [], "address": ""}
 

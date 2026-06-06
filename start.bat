@@ -11,6 +11,9 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+echo [0/3] Dang dung va don dep cac container cu (tranh xung dot ngrok)...
+docker-compose down
+
 echo [1/3] Dang build image...
 docker-compose build
 

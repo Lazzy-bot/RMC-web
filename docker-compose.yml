@@ -76,8 +76,8 @@ services:
 
   ngrok:
     image: ngrok/ngrok:latest
-    # FIX #5: Dùng on-failure:5 thay on-failure để có giới hạn retry, tránh loop vô hạn
-    restart: on-failure:5
+    # FIX #5: Sử dụng unless-stopped để tự động thử lại khi ngrok nhả session khóa miền cũ
+    restart: unless-stopped
     container_name: ngrok-tunnel
     # FIX #6: Chạy ngrok qua http với domain tĩnh
     command: >

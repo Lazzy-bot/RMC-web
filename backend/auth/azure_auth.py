@@ -308,16 +308,24 @@ class GraphSession:
     @property
     def is_authenticated(self) -> bool:
         """Chỉ check cache local — KHÔNG gọi network."""
-        if not self.token or "access_token" not in self.token:
+        if not self.token:
             return False
+        
+        # 1. Nếu access_token còn hạn dùng (> 60s), coi như authenticated
         expires_at = self.token.get("expires_on")
-        if not expires_at:
-            return True  # Không biết hạn → coi như còn hạn
-        remaining = int(expires_at) - int(time.time())
-        # Sắp hết hạn trong 5 phút → refresh ngầm, không block
-        if remaining < 300:
+        if expires_at and int(expires_at) > int(time.time()) + 60:
+            # Sắp hết hạn trong 5 phút -> kích hoạt làm mới ngầm ở background, vẫn trả True
+            remaining = int(expires_at) - int(time.time())
+            if remaining < 300:
+                self.refresh_in_background()
+            return True
+            
+        # 2. Nếu access_token hết hạn nhưng có refresh_token -> kích hoạt làm mới ngầm, vẫn trả True
+        if "refresh_token" in self.token:
             self.refresh_in_background()
-        return remaining > 60
+            return True
+            
+        return False
 
 
 # Singleton instance
