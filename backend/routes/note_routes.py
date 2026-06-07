@@ -141,7 +141,12 @@ def pending_notifications():
     thì trả về danh sách rỗng để frontend thử lại sau.
     """
     try:
-        notifications = get_pending_notifications()
+        user = get_session_user()
+        user_email = user.get("email") if user else None
+        if not user_email:
+            return jsonify([])
+            
+        notifications = get_pending_notifications(user_email)
         return jsonify(notifications)
     except Exception as e:
         print(f"ERROR get_pending_notifications: {e}")

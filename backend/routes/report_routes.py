@@ -204,3 +204,26 @@ def get_dashboard_full_data():
         return jsonify(get_comprehensive_dashboard_data(start, end, site))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def prewarm_site_files_cache():
+    """Nạp trước danh sách file của toàn bộ site ở background khi app khởi chạy."""
+    def run():
+        time.sleep(8)  # Đợi app khởi động ổn định
+        try:
+            sites_config, _ = load_sites_config()
+            all_keys = []
+            for group in sites_config.values():
+                for site_key in group.keys():
+                    all_keys.append(site_key)
+            print(f"[PREWARM] Bắt đầu nạp trước site files cache cho {len(all_keys)} sites...", flush=True)
+            for site_key in all_keys:
+                try:
+                    _get_site_files(site_key)
+                except Exception as ex:
+                    print(f"[PREWARM] Không thể pre-warm cache cho site {site_key}: {ex}", flush=True)
+            print("[PREWARM] Đã hoàn thành nạp trước toàn bộ site files cache.", flush=True)
+        except Exception as e:
+            print(f"[PREWARM] Lỗi trong quá trình pre-warm site files cache: {e}", flush=True)
+
+    threading.Thread(target=run, daemon=True).start()

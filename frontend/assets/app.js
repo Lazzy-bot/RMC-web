@@ -45,57 +45,83 @@ async function apiFetch(path, opts = {}) {
   const url = new URL(API + path);
   url.searchParams.set("_t", Date.now()); // Cache buster
 
-  // Timeout mặc định: 30s cho mọi request (trừ khi caller cung cấp signal riêng)
-  // Các tác vụ nặng (ghi Excel, sync) dùng timeout dài hơn qua opts.timeout
-  const timeoutMs = opts.timeout ?? 60000;
+  // Tăng timeout mặc định lên 120s cho các tác vụ nặng
+  const timeoutMs = opts.timeout ?? 120000;
   delete opts.timeout; // Xóa để không truyền vào fetch
 
-  // Nếu caller đã cung cấp signal riêng (ví dụ notification poller), ưu tiên dùng nó
-  // Nếu không, tự tạo AbortController với timeout
-  let controller = null;
-  let timeoutId  = null;
-  let signal     = opts.signal ?? null;
+  // Chỉ thử lại cho GET requests và POST đọc report text để tránh trùng lặp thao tác thay đổi dữ liệu (non-idempotent)
+  const isRetryable = !opts.method || opts.method.toUpperCase() === "GET" || (opts.method.toUpperCase() === "POST" && path.includes("/report/text"));
+  const maxRetries = isRetryable ? (opts.retries ?? 2) : 0;
+  delete opts.retries;
 
-  if (!signal) {
-    controller = new AbortController();
-    signal     = controller.signal;
-    timeoutId  = setTimeout(() => controller.abort(), timeoutMs);
-  }
+  let delayMs = opts.retryDelay ?? 1000;
+  delete opts.retryDelay;
 
-  try {
-    const res = await fetch(url, {
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      ...opts,
-      signal,
-    });
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    let controller = null;
+    let timeoutId  = null;
+    let signal     = opts.signal ?? null;
 
-    let data = null;
+    if (!signal) {
+      controller = new AbortController();
+      signal     = controller.signal;
+      timeoutId  = setTimeout(() => controller.abort(), timeoutMs);
+    }
+
     try {
-      data = await res.json();
-    } catch {
-      data = null;
-    }
+      const res = await fetch(url, {
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        ...opts,
+        signal,
+      });
 
-    if (!res.ok) {
-      const err = new Error((data && data.error) ? data.error : `HTTP ${res.status}`);
-      err.status = res.status;
-      err.data = data;
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
+      if (!res.ok) {
+        // Thử lại nếu gặp lỗi server 5xx và còn lượt
+        if (res.status >= 500 && attempt <= maxRetries) {
+          console.warn(`[apiFetch] Gặp lỗi HTTP ${res.status}. Đang thử lại lần ${attempt} sau ${delayMs}ms...`);
+          if (timeoutId) clearTimeout(timeoutId);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          delayMs *= 2;
+          continue;
+        }
+        const err = new Error((data && data.error) ? data.error : `HTTP ${res.status}`);
+        err.status = res.status;
+        err.data = data;
+        throw err;
+      }
+
+      return data;
+    } catch (err) {
+      // Thử lại nếu gặp lỗi kết nối (TypeError) hoặc timeout (AbortError) và còn lượt
+      if (attempt <= maxRetries && (err.name === "AbortError" || err instanceof TypeError)) {
+        console.warn(`[apiFetch] Lỗi kết nối/timeout (${err.message}). Đang thử lại lần ${attempt} sau ${delayMs}ms...`);
+        if (timeoutId) clearTimeout(timeoutId);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        delayMs *= 2;
+        continue;
+      }
+
+      // Chuyển AbortError thành thông báo dễ hiểu hơn
+      if (err.name === "AbortError") {
+        const timeoutErr = new Error("Yêu cầu quá thời gian chờ. Vui lòng kiểm tra kết nối hoặc thử lại.");
+        timeoutErr.name  = "TimeoutError";
+        timeoutErr.isTimeout = true;
+        throw timeoutErr;
+      }
       throw err;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
-
-    return data;
-  } catch (err) {
-    // Chuyển AbortError thành thông báo dễ hiểu hơn
-    if (err.name === "AbortError") {
-      const timeoutErr = new Error("Yêu cầu quá thời gian chờ. Vui lòng kiểm tra kết nối hoặc thử lại.");
-      timeoutErr.name  = "TimeoutError";
-      timeoutErr.isTimeout = true;
-      throw timeoutErr;
-    }
-    throw err;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
@@ -224,7 +250,6 @@ async function initApp() {
   renderSiteList(state.currentGroup);
   bindTopbar();
   bindActionStrip();
-  startNotificationPoller();
   triggerBackgroundSync();
 }
 
@@ -1820,7 +1845,7 @@ function resetNoteForm() {
   $("#note-time-input").value = "";
   $("#note-repeat-count").value = "1";
   $("#note-repeat-interval").value = "5";
-  $("#note-mode").value = "Cố định";
+  $("#note-mode").value = "1 lần";
   $("#note-delete-mode").value = "delete";
   
   // Uncheck grids
@@ -2229,7 +2254,7 @@ function editNote(note) {
   $("#note-emails").value = note.emails ? note.emails.join(", ") : "";
   $("#note-repeat-count").value = note.repeat_count || 1;
   $("#note-repeat-interval").value = note.repeat_interval || 5;
-  $("#note-mode").value = note.mode || "Cố định";
+  $("#note-mode").value = note.mode || "1 lần";
   $("#note-delete-mode").value = note.delete_mode || "delete";
   
   // Load times
@@ -2542,6 +2567,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* ── Notification poller ─────────────────────────────────────── */
 function startNotificationPoller() {
+  if (state.pollerStarted) return;
+  state.pollerStarted = true;
+
   let _pollTimer   = null;
   let _controller  = null;
   let _running     = false;
@@ -2576,29 +2604,19 @@ function startNotificationPoller() {
   function start() {
     if (_running) return;
     _running  = true;
-    // Poll ngay khi tab được mở lại (không chờ 15s)
     poll();
     _pollTimer = setInterval(poll, 15000);
   }
 
-  function stop() {
-    _running = false;
-    if (_controller) { _controller.abort(); _controller = null; }
-    if (_pollTimer)  { clearInterval(_pollTimer); _pollTimer = null; }
-  }
+  // Khởi động chạy poller
+  start();
 
-  // Điểm mấu chốt: dừng khi tab ẩn, resume khi quay lại
+  // Điểm mấu chốt: khi quay lại tab, gọi poll ngay lập tức
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      stop();
-    } else {
-      // Chờ 1s để tránh burst nhiều request cùng lúc khi nhiều tab mở
-      setTimeout(start, 1000);
+    if (!document.hidden) {
+      poll();
     }
   });
-
-  // Bắt đầu lần đầu
-  start();
 
   // Yêu cầu quyền thông báo
   if (Notification.permission === "default") {
@@ -2626,8 +2644,52 @@ const _reminderQueue = [];
 let _reminderShowing = false;
 let _currentReminder = null;
 
+function playNotificationSound() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Play a sequence of notes mimicking a bright marimba alarm melody (similar to iPhone)
+    const notes = [
+      { freq: 659.25, delay: 0.0, dur: 0.25 },   // E5
+      { freq: 783.99, delay: 0.12, dur: 0.25 },  // G5
+      { freq: 880.00, delay: 0.24, dur: 0.25 },  // A5
+      { freq: 1046.50, delay: 0.36, dur: 0.25 }, // C6
+      { freq: 880.00, delay: 0.48, dur: 0.25 },   // A5
+      { freq: 1046.50, delay: 0.60, dur: 0.25 }, // C6
+      { freq: 1318.51, delay: 0.72, dur: 0.45 }   // E6
+    ];
+    
+    const playNote = (frequency, startTime, duration) => {
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      // Use triangle wave for a plucky, marimba-like tone
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(frequency, startTime);
+      
+      // Fast attack and exponential decay for a crisp plucking sound (loud and clear)
+      gainNode.gain.setValueAtTime(0, startTime);
+      gainNode.gain.linearRampToValueAtTime(0.8, startTime + 0.01); // Peak volume at 0.8 (loud!)
+      gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      
+      osc.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+    
+    const now = audioCtx.currentTime;
+    notes.forEach(note => {
+      playNote(note.freq, now + note.delay, note.dur);
+    });
+  } catch (e) {
+    console.warn("Failed to play notification sound:", e);
+  }
+}
+
 function showReminder(keyword, content, time) {
   _reminderQueue.push({ keyword, content, time });
+  playNotificationSound();
   if (!_reminderShowing) _showNextReminder();
 }
 

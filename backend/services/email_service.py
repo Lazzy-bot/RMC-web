@@ -10,7 +10,7 @@ import config
 # Gửi qua Microsoft Graph API (không cần SMTP credentials)
 # ============================================================
 
-def send_mail_via_graph(access_token: str, subject: str, body_html: str, recipients: list) -> bool:
+def send_mail_via_graph(access_token: str, subject: str, body_html: str, recipients: list, sender_email: str = None) -> bool:
     """
     Gửi email qua Microsoft Graph API /me/sendMail.
     Email gửi từ chính tài khoản của user đang đăng nhập.
@@ -36,6 +36,14 @@ def send_mail_via_graph(access_token: str, subject: str, body_html: str, recipie
         },
         "saveToSentItems": True,
     }
+
+    if sender_email:
+        payload["message"]["from"] = {
+            "emailAddress": {
+                "name": "RMC Assistant",
+                "address": sender_email.strip()
+            }
+        }
 
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -71,7 +79,7 @@ def send_mail_via_graph_async(access_token: str, subject: str, body_html: str,
     def _send():
         token = access_token
         # Thử gửi với token hiện tại
-        ok = send_mail_via_graph(token, subject, body_html, recipients)
+        ok = send_mail_via_graph(token, subject, body_html, recipients, sender_email=sender_email)
         if not ok and refresh_token:
             # Token hết hạn → làm mới
             print("[GraphMail] access_token hết hạn, đang làm mới bằng refresh_token...")
@@ -92,7 +100,7 @@ def send_mail_via_graph_async(access_token: str, subject: str, body_html: str,
                                 save_ms_refresh_token_for_user(user["id"], new_refresh)
                         except Exception as e2:
                             print(f"[GraphMail] Không thể cập nhật refresh_token: {e2}")
-                    send_mail_via_graph(new_token, subject, body_html, recipients)
+                    send_mail_via_graph(new_token, subject, body_html, recipients, sender_email=sender_email)
                 else:
                     print("[GraphMail] Làm mới token thất bại. Email không được gửi.")
             except Exception as e:

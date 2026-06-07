@@ -64,6 +64,13 @@ def create_app() -> Flask:
 
     _prewarm_dashboard(app)
 
+    # Pre-warm site files cache ở background khi app khởi động
+    try:
+        from routes.report_routes import prewarm_site_files_cache
+        prewarm_site_files_cache()
+    except Exception as e:
+        app.logger.warning(f"Could not trigger site files prewarm: {e}")
+
     def _rate_limited_response(retry_after: int) -> tuple:
         """Trả về HTTP 429 chuẩn với Retry-After header."""
         resp = jsonify({
@@ -154,12 +161,11 @@ def create_app() -> Flask:
                     )
                     return _rate_limited_response(retry_after)
 
-            # Heavy endpoints: sync, charts, dashboard, report text
+            # Heavy endpoints: sync, charts, dashboard (đã loại bỏ /api/report/text)
             _HEAVY_PREFIXES = (
                 "/api/sync",
                 "/api/charts",
                 "/api/dashboard",
-                "/api/report/text",
             )
             if path.startswith(_HEAVY_PREFIXES):
                 allowed, retry_after = heavy_limiter.is_allowed(user_key)

@@ -765,8 +765,8 @@
           <div class="form-group">
             <label>Chế độ</label>
             <select id="note-mode">
-              <option value="Cố định">Cố định (Lặp định kỳ theo ngày/tháng)</option>
               <option value="1 lần">1 lần (Chạy xong tự động đóng/xóa)</option>
+              <option value="Cố định">Cố định (Lặp định kỳ theo ngày/tháng)</option>
             </select>
           </div>
           <div class="form-group">
@@ -1446,12 +1446,12 @@
      (Large editor for report templates)
 ═══════════════════════════════════════════════════════ -->
   <div class="modal-overlay" id="tpl-edit-modal">
-    <div class="modal" style="max-width: 800px; width: 95%; max-height: 90vh; display: flex; flex-direction: column;">
+    <div class="modal" style="max-width: 1200px; width: 95%; height: 80vh; max-height: 90vh; display: flex; flex-direction: column;">
       <div class="modal-title">📝 Sửa nội dung báo cáo mẫu</div>
       <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
         <label id="tpl-edit-label" style="font-weight: bold; margin-bottom: 8px;">Tên file: ...</label>
         <textarea id="tpl-edit-content"
-          style="flex: 1; min-height: 400px; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.5; padding: 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); resize: none;"></textarea>
+          style="flex: 1; min-height: 480px; font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; line-height: 1.5; padding: 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); resize: vertical;"></textarea>
       </div>
       <div class="modal-footer" style="margin-top: 15px;">
         <button class="btn-secondary btn-close-modal">Hủy</button>

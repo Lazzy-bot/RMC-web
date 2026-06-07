@@ -126,7 +126,7 @@ def refresh_ms_access_token(refresh_token: str) -> str | None:
     """
     from config import MS_OAUTH_CLIENT_ID, MS_OAUTH_CLIENT_SECRET, MS_OAUTH_TENANT_ID
     if not refresh_token:
-        return None
+        return None, None
     try:
         token_url = f"https://login.microsoftonline.com/{MS_OAUTH_TENANT_ID}/oauth2/v2.0/token"
         resp = _requests.post(token_url, data={

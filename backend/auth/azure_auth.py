@@ -193,65 +193,76 @@ class GraphSession:
         }
 
     def _wait_for_device_login(self):
-        if AZURE_CLIENT_SECRET:
-            # Dùng requests poll thủ công để có thể gắn client_secret nếu cần
-            token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-            data = {
-                "client_id": CLIENT_ID,
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                "device_code": self._flow["device_code"]
-            }
-            expires_at = time.time() + self._flow.get("expires_in", 900)
-            interval = self._flow.get("interval", 5)
-            result = None
-            use_secret = False
+        result = None
+        try:
+            if AZURE_CLIENT_SECRET:
+                # Dùng requests poll thủ công để có thể gắn client_secret nếu cần
+                token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+                data = {
+                    "client_id": CLIENT_ID,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    "device_code": self._flow["device_code"]
+                }
+                expires_at = time.time() + self._flow.get("expires_in", 900)
+                interval = self._flow.get("interval", 5)
+                use_secret = False
 
-            # Tự động dò xem client có yêu cầu secret không bằng cách gửi thử không secret lần đầu
-            try:
-                r_detect = requests.post(token_url, data=data, timeout=10)
-                rj_detect = r_detect.json()
-                if r_detect.status_code != 200:
-                    err_desc = rj_detect.get("error_description", "")
-                    err_code = rj_detect.get("error", "")
-                    if "client_secret" in err_desc or "AADSTS7000218" in err_desc or err_code == "invalid_client":
-                        use_secret = True
-                        print("INFO: Device identified as Confidential Client, will use client_secret for polling.")
-            except Exception as e:
-                print(f"WARN: Error during automatic client type detection: {e}")
+                # Tự động dò xem client có yêu cầu secret không bằng cách gửi thử không secret lần đầu
+                try:
+                    r_detect = requests.post(token_url, data=data, timeout=10)
+                    rj_detect = r_detect.json()
+                    if r_detect.status_code != 200:
+                        err_desc = rj_detect.get("error_description", "")
+                        err_code = rj_detect.get("error", "")
+                        if "client_secret" in err_desc or "AADSTS7000218" in err_desc or err_code == "invalid_client":
+                            use_secret = True
+                            print("INFO: Device identified as Confidential Client, will use client_secret for polling.")
+                except Exception as e:
+                    print(f"WARN: Error during automatic client type detection: {e}")
 
-            while time.time() < expires_at:
-                poll_data = data.copy()
-                if use_secret and AZURE_CLIENT_SECRET:
-                    poll_data["client_secret"] = AZURE_CLIENT_SECRET
+                while time.time() < expires_at:
+                    try:
+                        poll_data = data.copy()
+                        if use_secret and AZURE_CLIENT_SECRET:
+                            poll_data["client_secret"] = AZURE_CLIENT_SECRET
 
-                r = requests.post(token_url, data=poll_data, timeout=10)
-                rj = r.json()
-                if "error" in rj:
-                    if rj["error"] == "authorization_pending":
+                        r = requests.post(token_url, data=poll_data, timeout=10)
+                        rj = r.json()
+                        if "error" in rj:
+                            if rj["error"] == "authorization_pending":
+                                time.sleep(interval)
+                                continue
+                            else:
+                                result = rj
+                                break
+                        else:
+                            # Gán scopes trả về bằng GRAPH_SCOPES nếu thiếu
+                            if "scope" not in rj:
+                                rj["scope"] = " ".join(GRAPH_SCOPES)
+                            if "expires_in" in rj:
+                                rj["expires_on"] = int(time.time()) + int(rj["expires_in"])
+                            result = rj
+                            break
+                    except Exception as poll_ex:
+                        print(f"WARN: Error polling device code token: {poll_ex}")
                         time.sleep(interval)
-                        continue
-                    else:
-                        result = rj
-                        break
-                else:
-                    # Gán scopes trả về bằng GRAPH_SCOPES nếu thiếu
-                    if "scope" not in rj:
-                        rj["scope"] = " ".join(GRAPH_SCOPES)
-                    if "expires_in" in rj:
-                        rj["expires_on"] = int(time.time()) + int(rj["expires_in"])
-                    result = rj
-                    break
-        else:
-            # Flow mặc định bằng MSAL (chỉ dùng được cho App bật "Allow public client flows = Yes")
-            result = self.app.acquire_token_by_device_flow(self._flow)
-
-
-        with self._flow_lock:
-            self._flow_result      = result
-            self._flow_in_progress = False
-            if result and "access_token" in result:
-                self.token = result
-                self.save_cache()
+            else:
+                # Flow mặc định bằng MSAL (chỉ dùng được cho App bật "Allow public client flows = Yes")
+                try:
+                    result = self.app.acquire_token_by_device_flow(self._flow)
+                except Exception as msal_ex:
+                    print(f"ERROR: MSAL acquire_token_by_device_flow failed: {msal_ex}")
+                    result = {"error": "msal_error", "error_description": str(msal_ex)}
+        except Exception as outer_ex:
+            print(f"ERROR: Outer exception in _wait_for_device_login: {outer_ex}")
+            result = {"error": "unexpected_error", "error_description": str(outer_ex)}
+        finally:
+            with self._flow_lock:
+                self._flow_result      = result
+                self._flow_in_progress = False
+                if result and "access_token" in result:
+                    self.token = result
+                    self.save_cache()
 
     def _get_flow_status(self):
         flow = self._flow

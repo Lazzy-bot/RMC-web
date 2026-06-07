@@ -6,9 +6,10 @@ import schedule
 import time
 from config import NOTE_ARCHIVE_DIR
 
-# Danh sách các reminder đang hoạt động (pending notifications)
-_pending_notifications = []
+# Danh sách các reminder đang hoạt động (pending notifications) theo từng user email
+_pending_notifications = {}
 _notifications_lock    = threading.Lock()
+_schedule_lock         = threading.RLock()
 
 # Schedule runner
 _schedule_thread_started = False
@@ -22,7 +23,11 @@ def _start_schedule_runner():
 
     def run():
         while True:
-            schedule.run_pending()
+            with _schedule_lock:
+                try:
+                    schedule.run_pending()
+                except Exception as e:
+                    print(f"ERROR running pending schedules: {e}")
             time.sleep(1)
 
     threading.Thread(target=run, daemon=True).start()
@@ -40,15 +45,20 @@ def _note_tag(note: dict | None = None, stt: int | None = None) -> str:
 
 
 def _cancel_note_schedules(tag: str) -> None:
-    schedule.clear(tag)
+    with _schedule_lock:
+        try:
+            schedule.clear(tag)
+        except Exception as e:
+            print(f"ERROR clearing schedules for tag {tag}: {e}")
 
 
 def _purge_pending_notifications(tag: str) -> None:
     with _notifications_lock:
-        _pending_notifications[:] = [
-            item for item in _pending_notifications
-            if item.get("note_tag") != tag
-        ]
+        for email in list(_pending_notifications.keys()):
+            _pending_notifications[email] = [
+                item for item in _pending_notifications[email]
+                if item.get("note_tag") != tag
+            ]
 
 
 # ---------------------------------------------------------------
@@ -102,6 +112,12 @@ def load_all_notes() -> list:
                     data["repeat_interval"] = 5
                 if "emails" not in data:
                     data["emails"] = []
+                if "scheduled_at" not in data:
+                    try:
+                        mtime = os.path.getmtime(fpath)
+                        data["scheduled_at"] = datetime.datetime.fromtimestamp(mtime).isoformat()
+                    except Exception:
+                        data["scheduled_at"] = datetime.datetime.now().isoformat()
                 result.append(data)
         except Exception as e:
             print(f"ERROR reading {fname}: {e}")
@@ -133,6 +149,7 @@ def create_note(keyword: str, content: str, times: list, days: list,
         "paused":          False,
         "done":            False,
         "creator_email":   creator_email,
+        "scheduled_at":    datetime.datetime.now().isoformat(),
     }
 
     with open(fpath, "w", encoding="utf-8") as f:
@@ -192,6 +209,7 @@ def update_note(stt: int, keyword: str, content: str, times: list, days: list,
         "paused":          paused,
         "done":            done,
         "creator_email":   creator_email or saved_creator,
+        "scheduled_at":    datetime.datetime.now().isoformat(),
     }
 
     with open(fpath, "w", encoding="utf-8") as f:
@@ -243,6 +261,7 @@ def resume_note(stt: int) -> bool:
         data = json.load(f)
 
     data["paused"] = False
+    data["scheduled_at"] = datetime.datetime.now().isoformat()
 
     with open(fpath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -261,7 +280,8 @@ def delete_note(file_path: str, stt: int | None = None, note_tag: str | None = N
     """Xóa file note và hủy toàn bộ lịch liên quan."""
     tag = note_tag or _note_tag(stt=stt)
     try:
-        had_schedules = bool(tag and tag != "note:unknown" and schedule.get_jobs(tag))
+        with _schedule_lock:
+            had_schedules = bool(tag and tag != "note:unknown" and schedule.get_jobs(tag))
         if tag and tag != "note:unknown":
             _cancel_note_schedules(tag)
             _purge_pending_notifications(tag)
@@ -273,6 +293,65 @@ def delete_note(file_path: str, stt: int | None = None, note_tag: str | None = N
     except Exception as e:
         print(f"ERROR deleting note: {e}")
     return False
+
+
+def _is_note_completed(note: dict, now: datetime.datetime) -> bool:
+    scheduled_at_str = note.get("scheduled_at")
+    if scheduled_at_str:
+        try:
+            scheduled_at = datetime.datetime.fromisoformat(scheduled_at_str)
+        except Exception:
+            scheduled_at = now
+    else:
+        scheduled_at = now
+
+    times = note.get("times", [])
+    days = note.get("days", [])
+    months = note.get("months", [])
+
+    dts = []
+    for m in months:
+        for d in days:
+            for t in times:
+                try:
+                    month = int(m)
+                    day = int(d)
+                    h, min_val = map(int, t.split(":"))
+                    dt = datetime.datetime(scheduled_at.year, month, day, h, min_val)
+                    if dt < scheduled_at:
+                        dt = datetime.datetime(scheduled_at.year + 1, month, day, h, min_val)
+                    dts.append(dt)
+                except Exception:
+                    pass
+
+    if not dts:
+        return True
+
+    max_dt = max(dts)
+    now_trunc = now.replace(second=0, microsecond=0)
+    max_dt_trunc = max_dt.replace(second=0, microsecond=0)
+    return now_trunc >= max_dt_trunc
+
+
+def _handle_completed_note(note: dict) -> None:
+    file_path = note.get("_file")
+    delete_mode = note.get("delete_mode", "delete")
+    note_tag = _note_tag(note)
+    
+    _cancel_note_schedules(note_tag)
+    
+    if file_path and os.path.exists(file_path):
+        try:
+            if delete_mode == "delete":
+                os.remove(file_path)
+            else:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                d["done"] = True
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"ERROR post-reminder file handling: {e}")
 
 
 def schedule_note(note: dict):
@@ -306,12 +385,36 @@ def schedule_note(note: dict):
                 def trigger_notification(time_label):
                     # Đẩy notification vào queue để frontend poll
                     with _notifications_lock:
-                        _pending_notifications.append({
-                            "keyword": keyword,
-                            "content": content,
-                            "time":    time_label,
-                            "note_tag": note_tag,
-                        })
+                        targets = set()
+                        if emails:
+                            for em in emails:
+                                if em:
+                                    targets.add(em.strip().lower())
+                        c_email = note.get("creator_email")
+                        if c_email:
+                            targets.add(c_email.strip().lower())
+                        
+                        # Fallback nếu không có email nhận/creator cụ thể:
+                        # Gửi cho tất cả users đã đăng ký trong hệ thống
+                        if not targets:
+                            try:
+                                from auth.user_auth import list_users
+                                for u in list_users():
+                                    u_email = u.get("email")
+                                    if u_email:
+                                        targets.add(u_email.strip().lower())
+                            except Exception as ex:
+                                print(f"[Note Trigger] Error listing users for fallback: {ex}")
+                        
+                        for target in targets:
+                            if target not in _pending_notifications:
+                                _pending_notifications[target] = []
+                            _pending_notifications[target].append({
+                                "keyword": keyword,
+                                "content": content,
+                                "time":    time_label,
+                                "note_tag": note_tag,
+                            })
 
                     # Gửi email nhắc nhở nếu có email và cấu hình SMTP
                     if emails:
@@ -359,7 +462,9 @@ def schedule_note(note: dict):
                         for i in range(1, repeat_count):
                             time.sleep(repeat_interval * 60)
                             # Kiểm tra xem lịch có bị hủy hoặc pause giữa chừng hay không
-                            if not schedule.get_jobs(note_tag):
+                            with _schedule_lock:
+                                has_jobs = bool(schedule.get_jobs(note_tag))
+                            if not has_jobs:
                                 break
                             try:
                                 with open(file_path, "r", encoding="utf-8") as f:
@@ -382,36 +487,35 @@ def schedule_note(note: dict):
                     threading.Thread(target=repeat_runner, daemon=True).start()
 
                 if mode == "1 lần":
-                    if file_path and os.path.exists(file_path):
-                        try:
-                            if delete_mode == "delete":
-                                os.remove(file_path)
-                            else:
-                                with open(file_path, "r", encoding="utf-8") as f:
-                                    d = json.load(f)
-                                d["done"] = True
-                                with open(file_path, "w", encoding="utf-8") as f:
-                                    json.dump(d, f, ensure_ascii=False, indent=4)
-                        except Exception as e:
-                            print(f"ERROR post-reminder file handling: {e}")
-                    return schedule.CancelJob
+                    if _is_note_completed(note, now):
+                        _handle_completed_note(note)
+                        return schedule.CancelJob
 
             return job
 
-        schedule.every().day.at(t).tag(note_tag).do(make_job())
+        with _schedule_lock:
+            try:
+                schedule.every().day.at(t).tag(note_tag).do(make_job())
+            except Exception as e:
+                print(f"ERROR scheduling note job at {t}: {e}")
 
 
-def get_pending_notifications() -> list:
+def get_pending_notifications(user_email: str | None = None) -> list:
     """Frontend poll hàm này để nhận các thông báo đang chờ."""
     # Luôn trả về nhanh (không hang) — nếu không lấy được lock trong 0.5s
     # thì trả về danh sách rỗng để frontend thử lại sau.
+    if not user_email:
+        return []
     acquired = _notifications_lock.acquire(timeout=0.5)
     if not acquired:
         return []
     try:
-        result = _pending_notifications.copy()
-        _pending_notifications.clear()
-        return result
+        email_key = user_email.strip().lower()
+        if email_key in _pending_notifications:
+            result = _pending_notifications[email_key].copy()
+            _pending_notifications[email_key].clear()
+            return result
+        return []
     finally:
         _notifications_lock.release()
 
@@ -419,11 +523,15 @@ def get_pending_notifications() -> list:
 def reload_all_schedules():
     """Khởi động lại tất cả lịch nhắc từ file (gọi khi server start)."""
     try:
-        schedule.clear()
+        with _schedule_lock:
+            schedule.clear()
         notes = load_all_notes()
         for note in notes:
             if not note.get("done", False) and not note.get("paused", False):
-                schedule_note(note)
+                if note.get("mode") == "1 lần" and _is_note_completed(note, datetime.datetime.now()):
+                    _handle_completed_note(note)
+                else:
+                    schedule_note(note)
         print(f"Loaded {len(notes)} reminder(s) from disk")
     except Exception as e:
         print(f"ERROR reloading all schedules: {e}")

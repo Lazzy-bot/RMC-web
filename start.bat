@@ -37,7 +37,7 @@ docker logs cloudflared-tunnel 2>&1 | findstr "trycloudflare.com"
 echo     (Neu khong thay duong dan o tren, hay go: docker logs cloudflared-tunnel)
 echo.
 echo  3. Truy cap qua Tunnel (Ngrok):
-echo     https://credible-goofiness-tile.ngrok-free.dev
+echo     https://balance-rotting-blooming.ngrok-free.dev
 echo.
 echo  4. Xem trang thai Tunnel (Ngrok Dashboard):
 echo     http://localhost:4040

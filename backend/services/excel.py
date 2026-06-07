@@ -365,22 +365,38 @@ def _load_dashboard_raw():
 def _get_raw_excel_data() -> dict:
     """Trả về raw Excel data từ in-memory cache.
     Tự động trigger background refresh khi cache sắp hết hạn.
-    Nếu chưa có cache, BLOCK một lần để tải về (cold start)."""
-    now     = _time.time()
-    age     = now - _dashboard_cache["loaded_at"]
-    has_data = _dashboard_cache["data"] is not None
+    Nếu chưa có cache, tải từ disk cache trước (không block), nếu không có disk cache thì mới block tải OneDrive."""
+    now = _time.time()
 
+    # 1. Nếu chưa có in-memory cache, cố gắng tải từ disk cache trước
+    if _dashboard_cache["data"] is None:
+        from config import METADATA_DIR
+        import json
+        cache_file = os.path.join(METADATA_DIR, "excel_raw_cache.json")
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    cached = json.load(f)
+                with _dashboard_cache["lock"]:
+                    _dashboard_cache["data"]      = cached
+                    # Đặt loaded_at để cache được xem là sắp hết hạn, kích hoạt update ở background
+                    _dashboard_cache["loaded_at"] = now - (_DASHBOARD_CACHE_TTL - 10)
+                _log("OK: Dashboard initial data restored from disk cache (fast cold start).")
+            except Exception as ce:
+                _log(f"ERROR: Cannot read disk cache on cold start: {ce}")
+
+    # 2. Kiểm tra lại xem đã có data chưa (hoặc từ disk cache vừa load hoặc đã có sẵn)
+    has_data = _dashboard_cache["data"] is not None
     if has_data:
-        # Cache đã có dữ liệu -> TRẢ THẲNG NGAY để không block UI của user.
-        # Nếu cache đã đến lúc cần làm mới (lớn hơn TTL - REFRESH_AHEAD, hoặc đã quá TTL),
-        # ta kích hoạt làm mới ở background thread.
+        age = now - _dashboard_cache["loaded_at"]
+        # Kích hoạt làm mới ở background thread nếu cache đã đến lúc hoặc đã hết hạn
         if age >= (_DASHBOARD_CACHE_TTL - _DASHBOARD_REFRESH_AHEAD):
             with _dashboard_cache["lock"]:
                 if not _dashboard_cache["is_loading"]:
                     threading.Thread(target=_load_dashboard_raw, daemon=True).start()
         return _dashboard_cache["data"]
 
-    # Chỉ block duy nhất một lần đầu khi hoàn toàn chưa có cache (cold start)
+    # 3. Chỉ block tải trực tiếp từ OneDrive nếu chưa có cả memory lẫn disk cache
     _load_dashboard_raw()
     return _dashboard_cache["data"] or {"values": [], "address": ""}
 
@@ -424,7 +440,7 @@ def get_comprehensive_dashboard_data(start_date=None, end_date=None, site_filter
         
         import collections
         total_alarms = 0; total_downtime = 0; active_alarms = 0; resolved_alarms = 0; critical_alarms = 0
-        trends = {}; sev_c = {"High": 0, "Medium": 0, "Low": 0}; site_s = {}; top_d = {}; dev_t = {}; heatmap_data = {}; table = collections.deque(maxlen=50)
+        trends = {}; sev_c = {"High": 0, "Medium": 0, "Low": 0}; site_s = {}; top_d = {}; dev_t = {}; heatmap_data = {}; table = []
         
         for row in vals:
             if not row: continue
@@ -512,7 +528,7 @@ def get_comprehensive_dashboard_data(start_date=None, end_date=None, site_filter
             "top_devices": [{"name": k, "count": v} for k, v in top_devices],
             "severity": sev_c, "heatmap": h_s,
             "device_types": [{"type": k, "count": v} for k, v in dev_t.items()],
-            "table": list(table)[::-1]
+            "table": table[::-1]
         }
     except Exception as e:
         _log(traceback.format_exc()); return {"error": str(e)}
