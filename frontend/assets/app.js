@@ -73,8 +73,12 @@ async function apiFetch(path, opts = {}) {
     try {
       const res = await fetch(url, {
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
         ...opts,
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "69420",
+          ...(opts.headers || {})
+        },
         signal,
       });
 
@@ -2482,8 +2486,12 @@ function bindDocSearch() {
 /* ── Background sync ─────────────────────────────────────────── */
 async function triggerBackgroundSync() {
   if (!state.graphAuthenticated) {
-    showToast("Lỗi Sync", "Chưa xác thực OneDrive, vui lòng làm theo hướng dẫn.");
-    await startDeviceFlowAuth();
+    if (state.isAdmin) {
+      showToast("Lỗi Sync", "Chưa xác thực OneDrive, vui lòng làm theo hướng dẫn.");
+      await startDeviceFlowAuth();
+    } else {
+      showToast("Lỗi Sync", "OneDrive chưa được xác thực. Vui lòng liên hệ Admin để cấu hình.");
+    }
     return;
   }
 
@@ -2588,7 +2596,7 @@ function startNotificationPoller() {
       if (!Array.isArray(notifs)) return;
       notifs.forEach(n => {
         showReminder(n.keyword, n.content, n.time || "");
-        if (Notification.permission === "granted") {
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
           new Notification(n.keyword, { body: n.content });
         }
       });
@@ -2619,7 +2627,7 @@ function startNotificationPoller() {
   });
 
   // Yêu cầu quyền thông báo
-  if (Notification.permission === "default") {
+  if (typeof Notification !== "undefined" && Notification.permission === "default") {
     Notification.requestPermission();
   }
 }

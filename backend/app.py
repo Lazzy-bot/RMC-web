@@ -7,7 +7,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from auth import get_session_user, init_oauth, init_user_store
 from config import APP_SECRET_KEY, RATE_LIMIT_ENABLED
 from routes import auth_bp, report_bp, contact_bp, note_bp, image_bp, docs_bp, admin_mgmt_bp
-from services.note import reload_all_schedules
+from services import ProcessFileLock, reload_all_schedules
+from services.note import touch_note_modified
 from rate_limiter import (
     login_limiter,
     api_ip_limiter,
@@ -27,7 +28,7 @@ def create_app() -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.secret_key = APP_SECRET_KEY
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["SESSION_COOKIE_SECURE"] = False  # Set to True if using HTTPS
+    app.config["SESSION_COOKIE_SECURE"] = True
     app.config["PERMANENT_SESSION_LIFETIME"] = 86400 * 30 # 30 days
     CORS(app, supports_credentials=True)
 
@@ -37,11 +38,54 @@ def create_app() -> Flask:
     def load_schedules_async(app):
         def run():
             time.sleep(2)
-            try:
-                with app.app_context():
-                    reload_all_schedules()
-            except Exception as e:
-                app.logger.error(f"Async loading schedules error: {e}")
+            from config import METADATA_DIR, NOTE_ARCHIVE_DIR
+            import os
+            import schedule
+
+            lock_file = os.path.join(METADATA_DIR, "scheduler.lock")
+            state_file = os.path.join(NOTE_ARCHIVE_DIR, "last_modified.txt")
+            lock = ProcessFileLock(lock_file)
+
+            while True:
+                if lock.acquire():
+                    app.logger.info("[Scheduler] Acquired lock. Running scheduler loop.")
+                    try:
+                        last_reload_time = 0.0
+                        while True:
+                            mtime = 0.0
+                            if os.path.exists(state_file):
+                                try:
+                                    mtime = os.path.getmtime(state_file)
+                                except Exception:
+                                    pass
+                            else:
+                                try:
+                                    touch_note_modified()
+                                    mtime = os.path.getmtime(state_file)
+                                except Exception:
+                                    pass
+
+                            if mtime > last_reload_time:
+                                app.logger.info(f"[Scheduler] Detected changes (mtime={mtime} > last={last_reload_time}). Reloading all schedules...")
+                                try:
+                                    with app.app_context():
+                                        reload_all_schedules()
+                                except Exception as re_ex:
+                                    app.logger.error(f"[Scheduler] Error reloading schedules: {re_ex}")
+                                last_reload_time = mtime
+
+                            try:
+                                schedule.run_pending()
+                            except Exception as e:
+                                app.logger.error(f"[Scheduler] Error running pending jobs: {e}")
+
+                            time.sleep(1)
+                    except Exception as ex:
+                        app.logger.error(f"[Scheduler] Exception in scheduler loop: {ex}")
+                    finally:
+                        lock.release()
+                        app.logger.info("[Scheduler] Released lock.")
+                time.sleep(5)
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -202,6 +246,35 @@ def create_app() -> Flask:
             if hasattr(g, 'start_time'):
                 duration = time.time() - g.start_time
                 response.headers["X-Process-Time"] = f"{duration:.3f}s"
+
+                # Ghi log thời gian xử lý chi tiết để phát hiện nghẽn mạng / OneDrive chậm
+                status_code = response.status_code
+                method = request.method
+                path = request.path
+                ip = request.remote_addr or "unknown"
+                
+                try:
+                    user = get_session_user()
+                    user_email = user.get("email") if user else "anonymous"
+                except Exception:
+                    user_email = "error_fetching_user"
+
+                log_msg = f"[API LOG] {ip} - {user_email} - {method} {path} - Status: {status_code} - Duration: {duration:.3f}s"
+                if duration > 2.0:
+                    log_msg += " [WARNING: SLOW RESPONSE / POSSIBLE HANG]"
+                    app.logger.warning(log_msg)
+                else:
+                    app.logger.info(log_msg)
+
+                from config import METADATA_DIR
+                import datetime
+                log_file = os.path.join(METADATA_DIR, "api_access.log")
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    with open(log_file, "a", encoding="utf-8") as f:
+                        f.write(f"[{timestamp}] {log_msg}\n")
+                except Exception:
+                    pass
 
             # Thêm RateLimit headers để client biết trạng thái limit hiện tại
             if RATE_LIMIT_ENABLED:

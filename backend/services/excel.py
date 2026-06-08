@@ -289,6 +289,7 @@ def _load_dashboard_raw():
     """Tải raw Excel data từ OneDrive, cập nhật _dashboard_cache.
     Gọi trong background thread — không block request."""
     from config import METADATA_DIR
+    from services.lock_util import file_lock
     import json
 
     with _dashboard_cache["lock"]:
@@ -296,57 +297,83 @@ def _load_dashboard_raw():
             return  # thread khác đang load, bỏ qua
         _dashboard_cache["is_loading"] = True
 
+    lock_file = os.path.join(METADATA_DIR, "excel_raw_cache.lock")
+    cache_file = os.path.join(METADATA_DIR, "excel_raw_cache.json")
+
     try:
-        drive_id, item_id = _resolve_excel_item(CHART_EXCEL_SHARE_LINK, _chart_excel_cache)
-        token   = graph_session.ensure_token()
-        headers = {"Authorization": f"Bearer {token}"}
-        target  = "Processing Results"
+        # Acquire file lock to ensure only one worker/process fetches from OneDrive
+        # Timeout 45 seconds to wait for other process to finish if they are fetching
+        with file_lock(lock_file, timeout=45.0) as acquired:
+            if not acquired:
+                _log("WARN: Could not acquire excel lock, loading from disk cache...")
+                if os.path.exists(cache_file):
+                    with open(cache_file, "r", encoding="utf-8") as f:
+                        cached = json.load(f)
+                    with _dashboard_cache["lock"]:
+                        _dashboard_cache["data"] = cached
+                        _dashboard_cache["loaded_at"] = _time.time()
+                return
 
-        r_url    = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/workbook/worksheets"
-        sheets_r = _session.get(r_url, headers=headers, timeout=15)
-        if sheets_r.status_code == 200:
-            sn_list = [s["name"] for s in sheets_r.json().get("value", [])]
-            for sn in sn_list:
-                if sn.strip().upper() == "PROCESSING RESULTS":
-                    target = sn
-                    break
-            else:
-                target = "Sheet1" if "Sheet1" in sn_list else (sn_list[0] if sn_list else target)
+            # Check if the disk cache was recently updated by another process
+            # (within the last 60 seconds) while we were waiting for the lock
+            if os.path.exists(cache_file):
+                mtime = os.path.getmtime(cache_file)
+                if _time.time() - mtime < 60:
+                    _log("OK: Disk cache was updated recently by another process, skipping fetch.")
+                    with open(cache_file, "r", encoding="utf-8") as f:
+                        cached = json.load(f)
+                    with _dashboard_cache["lock"]:
+                        _dashboard_cache["data"] = cached
+                        _dashboard_cache["loaded_at"] = _time.time()
+                    return
 
-        url = (
-            f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
-            f"/workbook/worksheets('{target}')/usedRange"
-        )
-        r = _session.get(url, headers=headers, timeout=30)
-        if r.status_code != 200:
-            raise Exception(f"usedRange HTTP {r.status_code}")
+            # Fetch from OneDrive
+            drive_id, item_id = _resolve_excel_item(CHART_EXCEL_SHARE_LINK, _chart_excel_cache)
+            token   = graph_session.ensure_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            target  = "Processing Results"
 
-        res_json = r.json()
-        vals     = res_json.get("values", [])
-        address  = res_json.get("address", "")
+            r_url    = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/workbook/worksheets"
+            sheets_r = _session.get(r_url, headers=headers, timeout=15)
+            if sheets_r.status_code == 200:
+                sn_list = [s["name"] for s in sheets_r.json().get("value", [])]
+                for sn in sn_list:
+                    if sn.strip().upper() == "PROCESSING RESULTS":
+                        target = sn
+                        break
+                else:
+                    target = "Sheet1" if "Sheet1" in sn_list else (sn_list[0] if sn_list else target)
 
-        # Lưu cache disk để dùng khi offline
-        try:
-            os.makedirs(METADATA_DIR, exist_ok=True)
-            cache_file = os.path.join(METADATA_DIR, "excel_raw_cache.json")
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump({"values": vals, "address": address}, f, ensure_ascii=False, indent=2)
-            _log("OK: Updated Excel data cache (disk).")
-        except Exception as ce:
-            _log(f"WARN: Error saving Excel disk cache: {ce}")
+            url = (
+                f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
+                f"/workbook/worksheets('{target}')/usedRange"
+            )
+            r = _session.get(url, headers=headers, timeout=30)
+            if r.status_code != 200:
+                raise Exception(f"usedRange HTTP {r.status_code}")
 
-        with _dashboard_cache["lock"]:
-            _dashboard_cache["data"]      = {"values": vals, "address": address}
-            _dashboard_cache["loaded_at"] = _time.time()
+            res_json = r.json()
+            vals     = res_json.get("values", [])
+            address  = res_json.get("address", "")
 
-        _log("OK: Dashboard in-memory cache refreshed.")
+            # Lưu cache disk để dùng khi offline
+            try:
+                os.makedirs(METADATA_DIR, exist_ok=True)
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump({"values": vals, "address": address}, f, ensure_ascii=False, indent=2)
+                _log("OK: Updated Excel data cache (disk).")
+            except Exception as ce:
+                _log(f"WARN: Error saving Excel disk cache: {ce}")
+
+            with _dashboard_cache["lock"]:
+                _dashboard_cache["data"]      = {"values": vals, "address": address}
+                _dashboard_cache["loaded_at"] = _time.time()
+
+            _log("OK: Dashboard in-memory cache refreshed.")
 
     except Exception as e:
         _log(f"WARN: Background Excel refresh failed: {e}")
         # Fallback: cố gắng đọc disk cache
-        from config import METADATA_DIR
-        import json
-        cache_file = os.path.join(METADATA_DIR, "excel_raw_cache.json")
         if os.path.exists(cache_file) and _dashboard_cache["data"] is None:
             try:
                 with open(cache_file, "r", encoding="utf-8") as f:

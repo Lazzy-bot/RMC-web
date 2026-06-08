@@ -31,7 +31,7 @@ WORKDIR /app/backend
 #         Thêm --log-level info để dễ debug hơn
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5000", \
-     "--workers", "1", \
+     "--workers", "4", \
      "--threads", "8", \
      "--worker-class", "gthread", \
      "--timeout", "300", \

@@ -19,26 +19,11 @@ class GraphSession:
 
     def __init__(self):
         self.cache = msal.SerializableTokenCache()
-        if os.path.exists(CACHE_FILE):
-            try:
-                self.cache.deserialize(open(CACHE_FILE, "r").read())
-            except Exception as e:
-                print(f"WARN: Error deserializing MSAL cache: {e}")
-
         self.app = msal.PublicClientApplication(
             CLIENT_ID, authority=AUTHORITY, token_cache=self.cache
         )
         self.account  = None
         self.token    = None
-
-        # Load manual token from persistent file if exists (for AZURE_CLIENT_SECRET manual flow)
-        if os.path.exists(MANUAL_TOKEN_FILE):
-            try:
-                with open(MANUAL_TOKEN_FILE, "r") as f:
-                    self.token = json.load(f)
-                print("INFO: Loaded manual token from cache successfully!")
-            except Exception as e:
-                print(f"WARN: Error loading manual token cache: {e}")
 
         # Device flow state (dùng cho frontend polling)
         self._flow             = None
@@ -46,22 +31,70 @@ class GraphSession:
         self._flow_in_progress = False
         self._flow_lock        = threading.Lock()
 
+        # Timestamps to track multi-process cache reload
+        self._cache_loaded_at = 0.0
+        self._token_loaded_at = 0.0
+        self._load_token_if_updated()
+
+    def _load_token_if_updated(self):
+        """Tự động reload cache và token từ disk nếu tiến trình khác cập nhật chúng."""
+        # Check MANUAL_TOKEN_FILE
+        if os.path.exists(MANUAL_TOKEN_FILE):
+            try:
+                mtime = os.path.getmtime(MANUAL_TOKEN_FILE)
+                if mtime > self._token_loaded_at:
+                    with open(MANUAL_TOKEN_FILE, "r") as f:
+                        self.token = json.load(f)
+                    self._token_loaded_at = mtime
+                    print(f"INFO: Loaded/Reloaded manual token from cache. mtime: {mtime}")
+            except Exception as e:
+                print(f"WARN: Error reloading manual token cache: {e}")
+
+        # Check CACHE_FILE
+        if os.path.exists(CACHE_FILE):
+            try:
+                mtime = os.path.getmtime(CACHE_FILE)
+                if mtime > self._cache_loaded_at:
+                    self.cache = msal.SerializableTokenCache()
+                    try:
+                        with open(CACHE_FILE, "r") as f:
+                            self.cache.deserialize(f.read())
+                    except Exception as e:
+                        print(f"WARN: Error deserializing MSAL cache: {e}")
+                    
+                    self.app = msal.PublicClientApplication(
+                        CLIENT_ID, authority=AUTHORITY, token_cache=self.cache
+                    )
+                    self._cache_loaded_at = mtime
+                    print(f"INFO: Loaded/Reloaded MSAL cache. mtime: {mtime}")
+            except Exception as e:
+                print(f"WARN: Error reloading MSAL cache: {e}")
+
     # ------------------------------------------------------------------
     def save_cache(self):
-        if self.cache.has_state_changed:
-            try:
-                with open(CACHE_FILE, "w") as f:
-                    f.write(self.cache.serialize())
-            except Exception as e:
-                print(f"WARN: Error writing MSAL cache: {e}")
-        
-        # Luôn persistent lưu self.token thủ công (chứa refresh_token cho silent refresh)
-        if self.token:
-            try:
-                with open(MANUAL_TOKEN_FILE, "w") as f:
-                    json.dump(self.token, f)
-            except Exception as e:
-                print(f"WARN: Error writing manual token cache: {e}")
+        from services.lock_util import file_lock
+        lock_path = os.path.join(METADATA_DIR, "onedrive_token.lock")
+        with file_lock(lock_path, timeout=5.0) as acquired:
+            if not acquired:
+                print("WARN: Could not acquire lock to save cache")
+                return
+
+            if self.cache.has_state_changed:
+                try:
+                    with open(CACHE_FILE, "w") as f:
+                        f.write(self.cache.serialize())
+                    self._cache_loaded_at = os.path.getmtime(CACHE_FILE)
+                except Exception as e:
+                    print(f"WARN: Error writing MSAL cache: {e}")
+            
+            # Luôn persistent lưu self.token thủ công (chứa refresh_token cho silent refresh)
+            if self.token:
+                try:
+                    with open(MANUAL_TOKEN_FILE, "w") as f:
+                        json.dump(self.token, f)
+                    self._token_loaded_at = os.path.getmtime(MANUAL_TOKEN_FILE)
+                except Exception as e:
+                    print(f"WARN: Error writing manual token cache: {e}")
 
     # ------------------------------------------------------------------
     def refresh_token_manually(self):
@@ -126,6 +159,7 @@ class GraphSession:
     # ------------------------------------------------------------------
     def get_valid_token(self):
         """Trả về access_token hợp lệ. Nếu hết hạn thì silent refresh."""
+        self._load_token_if_updated()
         # 1. Kiểm tra xem token trong bộ nhớ có hợp lệ không
         if self.token and "access_token" in self.token:
             expires_at = self.token.get("expires_on")
@@ -170,6 +204,7 @@ class GraphSession:
           - user_code, verification_uri  (hiển thị lên frontend)
           - status: "pending"
         """
+        self._load_token_if_updated()
         with self._flow_lock:
             if self._flow_in_progress:
                 return self._get_flow_status()
@@ -319,6 +354,7 @@ class GraphSession:
     @property
     def is_authenticated(self) -> bool:
         """Chỉ check cache local — KHÔNG gọi network."""
+        self._load_token_if_updated()
         if not self.token:
             return False
         

@@ -6,31 +6,59 @@ import schedule
 import time
 from config import NOTE_ARCHIVE_DIR
 
-# Danh sách các reminder đang hoạt động (pending notifications) theo từng user email
-_pending_notifications = {}
-_notifications_lock    = threading.Lock()
+# Locks
 _schedule_lock         = threading.RLock()
+
+# Helper to touch modification file
+def touch_note_modified():
+    from config import NOTE_ARCHIVE_DIR
+    import os
+    import time
+    state_file = os.path.join(NOTE_ARCHIVE_DIR, "last_modified.txt")
+    try:
+        os.makedirs(NOTE_ARCHIVE_DIR, exist_ok=True)
+        with open(state_file, "w") as f:
+            f.write(str(time.time()))
+    except Exception as e:
+        print(f"Error touching last_modified.txt: {e}")
+
+def _append_pending_notification_to_disk(target: str, item: dict):
+    from config import METADATA_DIR
+    from services.lock_util import file_lock
+    import json
+    
+    lock_file = os.path.join(METADATA_DIR, "pending_notifications.lock")
+    json_file = os.path.join(METADATA_DIR, "pending_notifications.json")
+    
+    with file_lock(lock_file, timeout=5.0) as acquired:
+        if not acquired:
+            print(f"[Notifications] ERROR: Could not acquire lock to append notification for {target}", flush=True)
+            return
+            
+        try:
+            notifications = {}
+            if os.path.exists(json_file):
+                try:
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        notifications = json.load(f)
+                except Exception:
+                    pass
+                    
+            if target not in notifications:
+                notifications[target] = []
+            notifications[target].append(item)
+            
+            with open(json_file, "w", encoding="utf-8") as f:
+                json.dump(notifications, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[Notifications] Error appending pending notification to disk: {e}", flush=True)
 
 # Schedule runner
 _schedule_thread_started = False
 
 
 def _start_schedule_runner():
-    global _schedule_thread_started
-    if _schedule_thread_started:
-        return
-    _schedule_thread_started = True
-
-    def run():
-        while True:
-            with _schedule_lock:
-                try:
-                    schedule.run_pending()
-                except Exception as e:
-                    print(f"ERROR running pending schedules: {e}")
-            time.sleep(1)
-
-    threading.Thread(target=run, daemon=True).start()
+    pass
 
 
 def _note_tag(note: dict | None = None, stt: int | None = None) -> str:
@@ -53,12 +81,42 @@ def _cancel_note_schedules(tag: str) -> None:
 
 
 def _purge_pending_notifications(tag: str) -> None:
-    with _notifications_lock:
-        for email in list(_pending_notifications.keys()):
-            _pending_notifications[email] = [
-                item for item in _pending_notifications[email]
-                if item.get("note_tag") != tag
-            ]
+    from config import METADATA_DIR
+    from services.lock_util import file_lock
+    import json
+    
+    lock_file = os.path.join(METADATA_DIR, "pending_notifications.lock")
+    json_file = os.path.join(METADATA_DIR, "pending_notifications.json")
+    
+    with file_lock(lock_file, timeout=5.0) as acquired:
+        if not acquired:
+            print(f"[Notifications] ERROR: Could not acquire lock to purge notifications for tag {tag}", flush=True)
+            return
+            
+        try:
+            if not os.path.exists(json_file):
+                return
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    notifications = json.load(f)
+            except Exception:
+                return
+                
+            changed = False
+            for email in list(notifications.keys()):
+                old_len = len(notifications[email])
+                notifications[email] = [
+                    item for item in notifications[email]
+                    if item.get("note_tag") != tag
+                ]
+                if len(notifications[email]) != old_len:
+                    changed = True
+                    
+            if changed:
+                with open(json_file, "w", encoding="utf-8") as f:
+                    json.dump(notifications, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[Notifications] Error purging pending notifications: {e}", flush=True)
 
 
 # ---------------------------------------------------------------
@@ -160,6 +218,7 @@ def create_note(keyword: str, content: str, times: list, days: list,
     data["_tag"]  = _note_tag(stt=stt)
 
     schedule_note(data)
+    touch_note_modified()
 
     if data.get("emails"):
         try:
@@ -227,6 +286,7 @@ def update_note(stt: int, keyword: str, content: str, times: list, days: list,
     # Lên lịch lại nếu chưa xong và không bị pause
     if not done and not paused:
         schedule_note(data)
+    touch_note_modified()
 
     return data
 
@@ -248,6 +308,7 @@ def pause_note(stt: int) -> bool:
     tag = _note_tag(stt=stt)
     _cancel_note_schedules(tag)
     _purge_pending_notifications(tag)
+    touch_note_modified()
     return True
 
 
@@ -273,6 +334,7 @@ def resume_note(stt: int) -> bool:
     if not data.get("done", False):
         _cancel_note_schedules(data["_tag"])  # Đảm bảo không bị trùng
         schedule_note(data)
+    touch_note_modified()
     return True
 
 
@@ -289,6 +351,7 @@ def delete_note(file_path: str, stt: int | None = None, note_tag: str | None = N
         if os.path.exists(file_path):
             os.remove(file_path)
             removed_file = True
+        touch_note_modified()
         return removed_file or had_schedules
     except Exception as e:
         print(f"ERROR deleting note: {e}")
@@ -384,37 +447,34 @@ def schedule_note(note: dict):
 
                 def trigger_notification(time_label):
                     # Đẩy notification vào queue để frontend poll
-                    with _notifications_lock:
-                        targets = set()
-                        if emails:
-                            for em in emails:
-                                if em:
-                                    targets.add(em.strip().lower())
-                        c_email = note.get("creator_email")
-                        if c_email:
-                            targets.add(c_email.strip().lower())
-                        
-                        # Fallback nếu không có email nhận/creator cụ thể:
-                        # Gửi cho tất cả users đã đăng ký trong hệ thống
-                        if not targets:
-                            try:
-                                from auth.user_auth import list_users
-                                for u in list_users():
-                                    u_email = u.get("email")
-                                    if u_email:
-                                        targets.add(u_email.strip().lower())
-                            except Exception as ex:
-                                print(f"[Note Trigger] Error listing users for fallback: {ex}")
-                        
-                        for target in targets:
-                            if target not in _pending_notifications:
-                                _pending_notifications[target] = []
-                            _pending_notifications[target].append({
-                                "keyword": keyword,
-                                "content": content,
-                                "time":    time_label,
-                                "note_tag": note_tag,
-                            })
+                    targets = set()
+                    if emails:
+                        for em in emails:
+                            if em:
+                                targets.add(em.strip().lower())
+                    c_email = note.get("creator_email")
+                    if c_email:
+                        targets.add(c_email.strip().lower())
+                    
+                    # Fallback nếu không có email nhận/creator cụ thể:
+                    # Gửi cho tất cả users đã đăng ký trong hệ thống
+                    if not targets:
+                        try:
+                            from auth.user_auth import list_users
+                            for u in list_users():
+                                u_email = u.get("email")
+                                if u_email:
+                                    targets.add(u_email.strip().lower())
+                        except Exception as ex:
+                            print(f"[Note Trigger] Error listing users for fallback: {ex}")
+                    
+                    for target in targets:
+                        _append_pending_notification_to_disk(target, {
+                            "keyword": keyword,
+                            "content": content,
+                            "time":    time_label,
+                            "note_tag": note_tag,
+                        })
 
                     # Gửi email nhắc nhở nếu có email và cấu hình SMTP
                     if emails:
@@ -501,23 +561,45 @@ def schedule_note(note: dict):
 
 
 def get_pending_notifications(user_email: str | None = None) -> list:
-    """Frontend poll hàm này để nhận các thông báo đang chờ."""
-    # Luôn trả về nhanh (không hang) — nếu không lấy được lock trong 0.5s
-    # thì trả về danh sách rỗng để frontend thử lại sau.
+    """Frontend poll hàm này để nhận các thông báo đang chờ (process-safe)."""
     if not user_email:
         return []
-    acquired = _notifications_lock.acquire(timeout=0.5)
-    if not acquired:
-        return []
-    try:
-        email_key = user_email.strip().lower()
-        if email_key in _pending_notifications:
-            result = _pending_notifications[email_key].copy()
-            _pending_notifications[email_key].clear()
-            return result
-        return []
-    finally:
-        _notifications_lock.release()
+        
+    from config import METADATA_DIR
+    from services.lock_util import file_lock
+    
+    lock_file = os.path.join(METADATA_DIR, "pending_notifications.lock")
+    json_file = os.path.join(METADATA_DIR, "pending_notifications.json")
+    
+    with file_lock(lock_file, timeout=0.5) as acquired:
+        if not acquired:
+            return []
+            
+        try:
+            if not os.path.exists(json_file):
+                return []
+                
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    notifications = json.load(f)
+            except Exception:
+                return []
+                
+            email_key = user_email.strip().lower()
+            if email_key in notifications and notifications[email_key]:
+                result = notifications[email_key].copy()
+                notifications[email_key] = []  # Clear
+                
+                try:
+                    with open(json_file, "w", encoding="utf-8") as f:
+                        json.dump(notifications, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+                return result
+            return []
+        except Exception as e:
+            print(f"[Notifications] Error reading pending notifications: {e}", flush=True)
+            return []
 
 
 def reload_all_schedules():

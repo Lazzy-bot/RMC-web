@@ -6,11 +6,14 @@ from config import (NVL_REPORT_FORM_PATH, TQB_REPORT_FORM_PATH,
                     LACASTA_REPORT_FORM_PATH, HOTLINES_AND_CONFIRM_FORM_PATH)
 from services import (sync_files_from_onedrive, get_report_text,
                       list_files_from_url, get_site_chart_data,
-                      get_filtered_chart_data, get_comprehensive_dashboard_data)
+                      get_filtered_chart_data, get_comprehensive_dashboard_data,
+                      ProcessFileLock, file_lock)
 from services.admin import load_sites_config
 from datetime import datetime, date
 import collections
 import re
+import os
+import json
 
 report_bp = Blueprint("report", __name__, url_prefix="/api")
 
@@ -18,50 +21,144 @@ report_bp = Blueprint("report", __name__, url_prefix="/api")
 _site_files_cache: dict = {}  # {site_key: (data, loaded_at)}
 _cache_lock = threading.Lock()
 _CACHE_TTL = 300  # 5 phút
+_site_files_loading = set()
 
-# Lock tránh chạy sync song song gây tràn RAM và ghi đè file
-_sync_lock = threading.Lock()
-_is_syncing = False
+
+def _load_site_files_from_disk():
+    global _site_files_cache
+    from config import METADATA_DIR
+    cache_file = os.path.join(METADATA_DIR, "site_files_cache.json")
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            with _cache_lock:
+                for k, v in data.items():
+                    _site_files_cache[k] = (v["data"], v["loaded_at"])
+        except Exception as e:
+            print(f"[Cache] Error reading site files disk cache: {e}", flush=True)
+
+
+def _save_site_files_to_disk():
+    from config import METADATA_DIR
+    cache_file = os.path.join(METADATA_DIR, "site_files_cache.json")
+    lock_file = os.path.join(METADATA_DIR, "site_files_cache.lock")
+    
+    with _cache_lock:
+        serializable = {}
+        for k, v in _site_files_cache.items():
+            serializable[k] = {"data": v[0], "loaded_at": v[1]}
+            
+    with file_lock(lock_file, timeout=5.0) as acquired:
+        if acquired:
+            try:
+                with open(cache_file, "w", encoding="utf-8") as f:
+                    json.dump(serializable, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"[Cache] Error saving site files disk cache: {e}", flush=True)
+
+
+# Load cache on startup
+try:
+    _load_site_files_from_disk()
+except Exception as e:
+    print(f"[Cache] Error loading site files cache on startup: {e}", flush=True)
+
+
+def _fetch_and_cache_site_files(site_key: str) -> dict:
+    from config import METADATA_DIR
+    lock_file = os.path.join(METADATA_DIR, f"site_files_fetch_{site_key}.lock")
+    
+    with file_lock(lock_file, timeout=10.0) as acquired:
+        if not acquired:
+            time.sleep(1.0)
+            _load_site_files_from_disk()
+            with _cache_lock:
+                if site_key in _site_files_cache:
+                    return _site_files_cache[site_key][0]
+            return {}
+
+        now = time.time()
+        _load_site_files_from_disk()
+        with _cache_lock:
+            if site_key in _site_files_cache:
+                data, loaded_at = _site_files_cache[site_key]
+                if now - loaded_at < 60:
+                    return data
+
+        onedrive_path = None
+        sites_config, _ = load_sites_config()
+        for group in sites_config.values():
+            if site_key in group:
+                onedrive_path = group[site_key]
+                break
+            for k, v in group.items():
+                if k.upper() == site_key.upper():
+                    onedrive_path = v
+                    break
+            if onedrive_path:
+                break
+        if not onedrive_path:
+            return {}
+
+        try:
+            files = list_files_from_url(onedrive_path)
+            result = {}
+            for f in files:
+                label = f["name"].replace(".txt", "").replace(".TXT", "")
+                result[label] = {"id": f["id"], "name": f["name"]}
+
+            with _cache_lock:
+                _site_files_cache[site_key] = (result, time.time())
+
+            _save_site_files_to_disk()
+            return result
+        except Exception as e:
+            print(f"[Cache] Error fetching files for {site_key}: {e}", flush=True)
+            raise e
+
+
+def _trigger_site_files_refresh(site_key: str):
+    with _cache_lock:
+        if site_key in _site_files_loading:
+            return
+        _site_files_loading.add(site_key)
+
+    def bg_fetch():
+        try:
+            _fetch_and_cache_site_files(site_key)
+        except Exception as e:
+            print(f"[Cache] Background refresh failed for site {site_key}: {e}", flush=True)
+        finally:
+            with _cache_lock:
+                _site_files_loading.discard(site_key)
+
+    threading.Thread(target=bg_fetch, daemon=True).start()
 
 
 def _get_site_files(site_key: str) -> dict:
-    """Lay va cache danh sach files cho mot site (TTL=5 phut)."""
+    """Lay va cache danh sach files cho mot site (TTL=5 phut, khong block)."""
     now = time.time()
 
+    cached_data = None
+    loaded_at = 0.0
     with _cache_lock:
         if site_key in _site_files_cache:
-            data, loaded_at = _site_files_cache[site_key]
-            if now - loaded_at < _CACHE_TTL:
-                return data
+            cached_data, loaded_at = _site_files_cache[site_key]
 
-    # Tim OneDrive path — thu ca ten day du lan ten viet tat
-    onedrive_path = None
-    sites_config, _ = load_sites_config()
-    for group in sites_config.values():
-        if site_key in group:
-            onedrive_path = group[site_key]
-            break
-        # Thu uppercase
-        for k, v in group.items():
-            if k.upper() == site_key.upper():
-                onedrive_path = v
-                break
-        if onedrive_path:
-            break
-    if not onedrive_path:
-        return {}
+    if cached_data is None:
+        _load_site_files_from_disk()
+        with _cache_lock:
+            if site_key in _site_files_cache:
+                cached_data, loaded_at = _site_files_cache[site_key]
 
-    files  = list_files_from_url(onedrive_path)
-    result = {}
-    for f in files:
-        label = f["name"].replace(".txt", "").replace(".TXT", "")
-        result[label] = {"id": f["id"], "name": f["name"]}
+    if cached_data is not None:
+        age = now - loaded_at
+        if age >= _CACHE_TTL:
+            _trigger_site_files_refresh(site_key)
+        return cached_data
 
-    # Cache kết quả (kể cả rỗng, tránh gọi OneDrive liên tục khi folder trống)
-    with _cache_lock:
-        _site_files_cache[site_key] = (result, time.time())
-
-    return result
+    return _fetch_and_cache_site_files(site_key)
 
 
 # -----------------------------------------------------------
@@ -120,14 +217,17 @@ def trigger_sync():
     Trigger đồng bộ toàn bộ files từ OneDrive.
     Chạy background thread, trả về ngay lập tức.
     """
-    global _is_syncing
-    with _sync_lock:
-        if _is_syncing:
-            return jsonify({"error": "Tiến trình đồng bộ đang chạy, vui lòng thử lại sau.", "code": "already_syncing"}), 409
-        _is_syncing = True
+    from config import METADATA_DIR
+    lock_file = os.path.join(METADATA_DIR, "sync.lock")
+    lock = ProcessFileLock(lock_file)
+    
+    if not lock.acquire():
+        return jsonify({
+            "error": "Tiến trình đồng bộ đang chạy ở tiến trình khác.",
+            "code": "already_syncing"
+        }), 409
 
-    def do_sync():
-        global _is_syncing
+    def do_sync(sync_lock):
         try:
             paths = [
                 NVL_REPORT_FORM_PATH, TQB_REPORT_FORM_PATH,
@@ -144,6 +244,13 @@ def trigger_sync():
             # Clear site cache sau khi sync
             with _cache_lock:
                 _site_files_cache.clear()
+                
+            try:
+                cache_file = os.path.join(METADATA_DIR, "site_files_cache.json")
+                if os.path.exists(cache_file):
+                    os.remove(cache_file)
+            except Exception:
+                pass
 
             # FIX: Invalidate dashboard Excel cache sau sync để dữ liệu mới nhất được load
             try:
@@ -154,10 +261,9 @@ def trigger_sync():
             except Exception as e:
                 print(f"WARN: Dashboard cache invalidation failed: {e}")
         finally:
-            with _sync_lock:
-                _is_syncing = False
+            sync_lock.release()
 
-    threading.Thread(target=do_sync, daemon=True).start()
+    threading.Thread(target=do_sync, args=(lock,), daemon=True).start()
     return jsonify({"message": "Đang đồng bộ ở background..."})
 
 

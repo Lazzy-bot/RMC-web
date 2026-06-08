@@ -529,7 +529,9 @@
 
     async function loadSiteList() {
       try {
-        const res = await fetch(`${API}/api/sites`);
+        const res = await fetch(`${API}/api/sites`, {
+          headers: { "ngrok-skip-browser-warning": "69420" }
+        });
         const data = await res.json();
         // Backend returns { sites: {}, key_map: {} }. fallback to raw data if needed
         const groups = data.sites || data;
@@ -556,7 +558,9 @@
       const url = `${API}/api/dashboard/data?start=${start}&end=${end}&site=${site}`;
 
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, {
+          headers: { "ngrok-skip-browser-warning": "69420" }
+        });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         

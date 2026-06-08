@@ -78,16 +78,14 @@ services:
     image: ngrok/ngrok:latest
     # FIX #5: Sử dụng unless-stopped để tự động thử lại khi ngrok nhả session khóa miền cũ
     restart: unless-stopped
-    container_name: ngrok-tunnel
-    # FIX #6: Chạy ngrok qua http với domain tĩnh
+    # FIX #6: Chạy ngrok qua http với domain tĩnh và bật Endpoint Pools
     command: >
       http
-      --url=balance-rotting-blooming.ngrok-free.dev
+      --url=credible-goofiness-tile.ngrok-free.dev
       rmc-assistant:5000
+      --pooling-enabled
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     depends_on:
       rmc-assistant:
         condition: service_healthy
-    ports:
-      - "4040:4040"
