@@ -136,3 +136,31 @@ Hoặc mở trực tiếp file `frontend/index.html` (cần CORS cho dev mode).
 - **Reminder notifications**: Backend chạy schedule. Frontend poll `/api/notes/pending` mỗi 30 giây bằng cơ chế Polling thông minh (tự động dừng khi ẩn tab / `document.hidden` để tối ưu tài nguyên máy chủ và tránh nghẽn luồng, tự động kích hoạt lại sau khi tab được mở với độ trễ an toàn 1 giây). Trình duyệt sẽ yêu cầu quyền `Notification` khi khởi động.
 - **CORS**: Đã cấu hình `flask-cors`. Nếu serve frontend từ domain khác cần cập nhật `origins` trong `app.py`.
 - **Tkinter đã bỏ hoàn toàn**: Không cần `tkinter`, `tkcalendar`, `pyperclip`, `PIL` nữa.
+
+---
+
+## Cân bằng tải với Ngrok Endpoint Pools
+
+Khi ứng dụng gặp lượng truy cập lớn, việc sử dụng duy nhất một cổng kết nối (endpoint) có thể gây gián đoạn hoặc chậm dịch vụ. Dự án đã tích hợp tính năng **Ngrok Endpoint Pools** cho phép chạy nhiều bản sao (replicas) của đường truyền Ngrok để tự động cân bằng tải (load balance).
+
+### Cách hoạt động
+Khi tính năng này được kích hoạt, bạn có thể chạy nhiều container Ngrok cùng lúc kết nối đến cùng một URL tĩnh (`https://balance-rotting-blooming.ngrok-free.dev`). Các yêu cầu từ người dùng gửi đến URL này sẽ tự động được phân phối đều giữa các container Ngrok đang hoạt động.
+
+### Hướng dẫn sử dụng
+
+1. **Khởi chạy thông qua `start.bat`**:
+   * Khi khởi chạy bằng `start.bat`, script sẽ hỏi bạn số lượng bản sao (replicas) muốn chạy.
+   * Nhập số lượng mong muốn (ví dụ: `2` hoặc `3`) và nhấn Enter.
+
+2. **Chạy bằng dòng lệnh**:
+   * Khởi động Docker Compose với số lượng bản sao mong muốn bằng tham số `--scale`:
+     ```bash
+     docker-compose up -d --scale ngrok=2
+     ```
+     *(Lưu ý: Bạn có thể thay đổi số lượng replicas động bất cứ lúc nào bằng cách chạy lại lệnh trên với số lượng mới)*
+
+### Lợi ích
+* **Tăng khả năng xử lý**: Giúp hệ thống chịu được lượng truy cập cao hơn.
+* **Linh hoạt**: Dễ dàng thêm hoặc bớt các bản sao mà không cần đăng ký lại tên miền.
+* **Độ tin cậy cao**: Nếu một trong các bản sao gặp sự cố, các bản sao còn lại vẫn tiếp tục duy trì hoạt động bình thường.
+

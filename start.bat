@@ -18,7 +18,9 @@ echo [1/3] Dang build image...
 docker-compose build
 
 echo [2/3] Dang khoi dong container...
-docker-compose up -d
+set "NGROK_REPLICAS=1"
+set /p NGROK_REPLICAS="Nhap so luong ban sao (replicas) Ngrok de tu dong can bang tai (Endpoint Pools) [Mac dinh: 1]: "
+docker-compose up -d --scale ngrok=%NGROK_REPLICAS%
 
 echo [3/3] Kiem tra trang thai...
 timeout /t 3 /nobreak >nul
