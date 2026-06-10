@@ -10,21 +10,21 @@ const state = {
   appInitialized: false,
   currentUser: null,
   isAdmin: false,
-  currentGroup:  "AEONMALL",
+  currentGroup: "AEONMALL",
   originalReportText: "",   // luu noi dung bao cao goc, khong bi ghi de boi Contact/Status
-  clockRunning:  true,
+  clockRunning: true,
   clockInterval: null,
-  countdownSec:  300,
-  countdownJob:  null,
+  countdownSec: 300,
+  countdownJob: null,
   countdownRunning: false,
-  boxFilled:     [false, false, false, false, false, false],
+  boxFilled: [false, false, false, false, false, false],
   currentSiteKey: null,
-  currentFileId:  null,
+  currentFileId: null,
   currentFileName: null,
-  sitesData:      {},         // {AEONMALL: {ANVL: ..., ATQB: ...}, ...}
-  notesList:      [],
-  activeSiteBtn:  null,
-  activeItemBtn:  null,
+  sitesData: {},         // {AEONMALL: {ANVL: ..., ATQB: ...}, ...}
+  notesList: [],
+  activeSiteBtn: null,
+  activeItemBtn: null,
   currentAdminTplItems: [],
   currentAdminTplSiteKey: null,
   chartInstances: {},
@@ -61,13 +61,13 @@ async function apiFetch(path, opts = {}) {
   while (true) {
     attempt++;
     let controller = null;
-    let timeoutId  = null;
-    let signal     = opts.signal ?? null;
+    let timeoutId = null;
+    let signal = opts.signal ?? null;
 
     if (!signal) {
       controller = new AbortController();
-      signal     = controller.signal;
-      timeoutId  = setTimeout(() => controller.abort(), timeoutMs);
+      signal = controller.signal;
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     }
 
     try {
@@ -118,7 +118,7 @@ async function apiFetch(path, opts = {}) {
       // Chuyển AbortError thành thông báo dễ hiểu hơn
       if (err.name === "AbortError") {
         const timeoutErr = new Error("Yêu cầu quá thời gian chờ. Vui lòng kiểm tra kết nối hoặc thử lại.");
-        timeoutErr.name  = "TimeoutError";
+        timeoutErr.name = "TimeoutError";
         timeoutErr.isTimeout = true;
         throw timeoutErr;
       }
@@ -212,10 +212,12 @@ async function checkAuth() {
     state.graphAuthenticated = !!res.graph_authenticated;
     onAuthSuccess(res.user);
   } catch (err) {
+    console.error("[checkAuth] Error:", err);
     if (err.isTimeout || err.name === "TimeoutError") {
       showLoginScreen("⚠️ Quá thời gian kết nối", "Server không phản hồi. Vui lòng tải lại trang.");
     } else {
-      showLoginScreen("Không thể kết nối backend.");
+      const detail = err.message || "Lỗi mạng hoặc server không phản hồi";
+      showLoginScreen("Không thể kết nối backend.", `Chi tiết: ${detail}. Hãy đảm bảo bạn đang dùng đúng URL HTTPS và không bị chặn bởi tường lửa.`);
     }
   }
 }
@@ -297,15 +299,15 @@ function startClock() {
 }
 
 function bindTopbar() {
-  $("#btn-catch").onclick    = () => { state.clockRunning = false; };
-  $("#btn-continue").onclick = () => { state.clockRunning = true;  };
-  $("#btn-sync").onclick     = triggerBackgroundSync;
-  $("#btn-charts").onclick   = showChartsModal;
-  $("#btn-logout").onclick   = async () => {
+  $("#btn-catch").onclick = () => { state.clockRunning = false; };
+  $("#btn-continue").onclick = () => { state.clockRunning = true; };
+  $("#btn-sync").onclick = triggerBackgroundSync;
+  $("#btn-charts").onclick = showChartsModal;
+  $("#btn-logout").onclick = async () => {
     await apiFetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/";
   };
-  $("#btn-admin").onclick    = () => {
+  $("#btn-admin").onclick = () => {
     openModal("admin");
     // Load dữ liệu tab đang active (mặc định là Users)
     loadAdminUsers();
@@ -316,7 +318,7 @@ function bindTopbar() {
 /* ── Countdown ─────────────────────────────────────────────── */
 function startCountdown() {
   clearCountdown();
-  state.countdownSec     = 300;
+  state.countdownSec = 300;
   state.countdownRunning = true;
   const el = $("#countdown-display");
 
@@ -370,9 +372,9 @@ async function loadPics() {
 function updateSiteDatalist() {
   const datalist = $("#dept-options");
   if (!datalist) return;
-  
+
   const allOptions = new Set();
-  
+
   // Use short names (codes) from siteKeyMap if they exist, otherwise use full names
   // User requested: "chỉ sử dụng các tên viết tắt như AVG"
   if (state.siteKeyMap && Object.keys(state.siteKeyMap).length > 0) {
@@ -396,7 +398,7 @@ function updatePicsDatalist() {
 }
 
 function renderSiteList(group) {
-  const list    = $("#site-list");
+  const list = $("#site-list");
   list.innerHTML = "";
   state.currentGroup = group;
 
@@ -404,7 +406,7 @@ function renderSiteList(group) {
   const tabs = $$(".group-tab");
   tabs.forEach(t => t.classList.remove("active-aeon", "active-max"));
   if (group === "AEONMALL") $(".group-tab[data-group='AEONMALL']").classList.add("active-aeon");
-  else                       $(".group-tab[data-group='MAXVALUE']").classList.add("active-max");
+  else $(".group-tab[data-group='MAXVALUE']").classList.add("active-max");
 
   const sites = state.sitesData[group] || {};
 
@@ -430,7 +432,7 @@ function renderSiteList(group) {
 
 async function toggleSiteItems(siteKey, siteSlug, container, btn) {
   const subList = $(`#items-${siteSlug}`);
-  const isOpen  = subList.classList.contains("visible");
+  const isOpen = subList.classList.contains("visible");
 
   // Close all
   $$(".item-list.visible").forEach(l => l.classList.remove("visible"));
@@ -475,23 +477,23 @@ function _resetForms() {
   // Reset toan bo Contact form
   const contactDevice = $("#contact-device");
   if (contactDevice) contactDevice.value = "";
-  ["contact-time-start-h","contact-time-start-m",
-   "contact-time-end-h","contact-time-end-m"].forEach(id => {
-    const el = $(`#${id}`); if (el) el.value = "";
-  });
+  ["contact-time-start-h", "contact-time-start-m",
+    "contact-time-end-h", "contact-time-end-m"].forEach(id => {
+      const el = $(`#${id}`); if (el) el.value = "";
+    });
   const contactStatus = $("#contact-status");
   if (contactStatus) contactStatus.value = "Normal";
   const contactProcessing = $("#contact-processing");
   if (contactProcessing) contactProcessing.value = "None";
 
   // Reset toan bo Status form
-  const statusDept   = $("#status-dept");   if (statusDept)   statusDept.value   = "";
+  const statusDept = $("#status-dept"); if (statusDept) statusDept.value = "";
   const statusDevice = $("#status-device"); if (statusDevice) statusDevice.value = "";
-  const statusDesc   = $("#status-desc");   if (statusDesc)   statusDesc.value   = "";
-  ["status-start-h","status-start-m",
-   "status-end-h","status-end-m"].forEach(id => {
-    const el = $(`#${id}`); if (el) el.value = "";
-  });
+  const statusDesc = $("#status-desc"); if (statusDesc) statusDesc.value = "";
+  ["status-start-h", "status-start-m",
+    "status-end-h", "status-end-m"].forEach(id => {
+      const el = $(`#${id}`); if (el) el.value = "";
+    });
 
   // Reset originalReportText
   state.originalReportText = "";
@@ -503,7 +505,7 @@ async function selectItem(btn, fileId, fileName, label) {
   btn.classList.add("active");
   state.activeItemBtn = btn;
 
-  state.currentFileId  = fileId;
+  state.currentFileId = fileId;
   state.currentFileName = fileName;
 
   // Reset form khi chon item moi
@@ -674,12 +676,12 @@ function openModal(name) {
       el.disabled = false;
       el.style.opacity = "1";
     });
-    const dept   = _extractFromReport("bộ phận") || _extractFromReport("khu vực");
+    const dept = _extractFromReport("bộ phận") || _extractFromReport("khu vực");
     const device = _extractFromReport("thiết bị");
-    const time   = _extractTimeFromReport();
+    const time = _extractTimeFromReport();
 
-    if (dept)   { 
-      const el = $("#status-dept");   
+    if (dept) {
+      const el = $("#status-dept");
       if (el) {
         el.value = dept;
         // Trigger device list update immediately
@@ -687,12 +689,12 @@ function openModal(name) {
       }
     }
     if (device) { const el = $("#status-device"); if (el) el.value = device; }
-    if (time)   { _setTimePicker("status-start", time); }
+    if (time) { _setTimePicker("status-start", time); }
 
     // Auto-fill ngay hom nay cho ca 2 date picker
     const todayVal = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
     const sd = $("#status-start-date"); if (sd) sd.value = todayVal;
-    const ed = $("#status-end-date");   if (ed) ed.value = todayVal;
+    const ed = $("#status-end-date"); if (ed) ed.value = todayVal;
   }
 }
 
@@ -764,10 +766,10 @@ function _adminActionsHtml(user) {
       <div id="action-status-${user.id}" style="font-size: 13px; font-weight: 600; display: none;"></div>
     `;
   } else {
-    const roleBtn = user.role === 'admin' 
+    const roleBtn = user.role === 'admin'
       ? `<button class="admin-demote" data-id="${user.id}" style="padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid #e5e7eb; background: white; color: #374151; cursor: pointer;">Hạ quyền</button>`
       : `<button class="admin-promote" data-id="${user.id}" style="padding: 4px 8px; font-size: 12px; border-radius: 4px; border: 1px solid #e5e7eb; background: white; color: #374151; cursor: pointer;">Lên Admin</button>`;
-      
+
     return `
       <div class="admin-action-group" style="display:flex; gap: 8px; justify-content: flex-end;">
         ${roleBtn}
@@ -794,8 +796,8 @@ function renderAdminUsers(users) {
   const searchKw = ($("#admin-user-search")?.value || "").toLowerCase();
   let displayUsers = users;
   if (searchKw) {
-    displayUsers = users.filter(u => 
-      (u.name && u.name.toLowerCase().includes(searchKw)) || 
+    displayUsers = users.filter(u =>
+      (u.name && u.name.toLowerCase().includes(searchKw)) ||
       (u.email && u.email.toLowerCase().includes(searchKw))
     );
   }
@@ -807,11 +809,11 @@ function renderAdminUsers(users) {
 
   tbody.innerHTML = displayUsers.map((user, idx) => {
     const mockDate = user.created_at ? new Date(user.created_at).toLocaleString('vi-VN') : "Không rõ";
-    const pColor = user.provider === 'microsoft' ? 'color:#1e40af; background:#dbeafe; border-color:#bfdbfe;' : 
-                   user.provider === 'google' ? 'color:#b91c1c; background:#fee2e2; border-color:#fecaca;' : 
-                   'color:#374151; background:#f3f4f6; border-color:#e5e7eb;';
-    
-    const roleBadge = user.role === 'admin' 
+    const pColor = user.provider === 'microsoft' ? 'color:#1e40af; background:#dbeafe; border-color:#bfdbfe;' :
+      user.provider === 'google' ? 'color:#b91c1c; background:#fee2e2; border-color:#fecaca;' :
+        'color:#374151; background:#f3f4f6; border-color:#e5e7eb;';
+
+    const roleBadge = user.role === 'admin'
       ? `<span style="background:#fef08a; color:#854d0e; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600;">Admin</span>`
       : `<span style="background:#e5e7eb; color:#374151; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600;">User</span>`;
 
@@ -838,8 +840,8 @@ function renderAdminUsers(users) {
       const id = btn.dataset.id;
       const grp = $(`#action-group-${id}`);
       const st = $(`#action-status-${id}`);
-      if(grp) grp.style.display = "none";
-      if(st) {
+      if (grp) grp.style.display = "none";
+      if (st) {
         st.style.display = "block";
         st.style.color = "#16a34a";
         st.textContent = "✓ Đã phê duyệt";
@@ -848,8 +850,8 @@ function renderAdminUsers(users) {
       const res = await apiFetch(`/api/auth/admin/users/${id}/approve`, { method: "POST" });
       if (res.error) {
         showToast("Lỗi", res.error);
-        if(grp) grp.style.display = "flex";
-        if(st) st.style.display = "none";
+        if (grp) grp.style.display = "flex";
+        if (st) st.style.display = "none";
       } else {
         const currentText = $(".admin-v2-tab[data-tab='users']").textContent;
         const match = currentText.match(/\d+/);
@@ -868,8 +870,8 @@ function renderAdminUsers(users) {
       const id = btn.dataset.id;
       const grp = $(`#action-group-${id}`);
       const st = $(`#action-status-${id}`);
-      if(grp) grp.style.display = "none";
-      if(st) {
+      if (grp) grp.style.display = "none";
+      if (st) {
         st.style.display = "block";
         st.style.color = "#dc2626";
         st.textContent = "✕ Đã từ chối";
@@ -926,7 +928,7 @@ async function loadAdminUsers() {
   }
   usersDataCache = res;
   renderAdminUsers(res);
-  
+
   const searchInput = $("#admin-user-search");
   if (searchInput) {
     searchInput.oninput = () => renderAdminUsers(usersDataCache);
@@ -1082,7 +1084,7 @@ function bindAdminModal() {
       syncCloudBtn.disabled = true;
       const originalText = syncCloudBtn.textContent;
       syncCloudBtn.innerHTML = `<span class="spinner"></span> Đang đồng bộ...`;
-      
+
       try {
         const res = await apiFetch("/api/admin/config/sync-from-cloud", { method: "POST" });
         if (res.error) {
@@ -1112,7 +1114,7 @@ function bindAdminTabs() {
       tabs.forEach(x => x.classList.remove("active"));
       t.classList.add("active");
       const panelId = "admin-panel-" + t.dataset.tab;
-      
+
       $$(".admin-panel").forEach(p => {
         p.style.display = "none";
         p.classList.add("hidden");
@@ -1135,13 +1137,13 @@ function bindAdminTabs() {
 async function loadAdminSites() {
   const tbody = $("#admin-sites-tbody");
   if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;"><span class="spinner"></span></td></tr>';
-  
+
   try {
     const data = await apiFetch("/api/admin/sites/config");
     console.log("Admin Sites Data:", data);
     const { sites_config } = data;
     renderAdminSites(sites_config);
-    
+
     // Fill template site select
     const select = $("#admin-tpl-site-select");
     if (select) {
@@ -1166,7 +1168,7 @@ function renderAdminSites(config) {
   for (const group in config) {
     for (const site in config[group]) {
       const path = config[group][site];
-      
+
       let groupBadge = `<span style="background: #e5e7eb; color: #374151; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;">${group}</span>`;
       if (group === "AEONMALL") {
         groupBadge = `<span style="background: #fce7f3; color: #be185d; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;">${group}</span>`;
@@ -1188,18 +1190,18 @@ function renderAdminSites(config) {
     }
   }
   tbody.innerHTML = html;
-  
+
   $$(".admin-site-edit").forEach(btn => {
     btn.onclick = async () => {
       const { group, site } = btn.dataset;
       const { sites_config, site_key_map } = await apiFetch("/api/admin/sites/config");
       const currentPath = sites_config[group][site];
-      
+
       const newName = window.prompt("Tên Site mới:", site);
       if (newName === null) return;
       const newPath = window.prompt("OneDrive Path mới:", currentPath);
       if (newPath === null) return;
-      
+
       if (newName !== site) {
         sites_config[group][newName] = newPath;
         delete sites_config[group][site];
@@ -1208,7 +1210,7 @@ function renderAdminSites(config) {
       } else {
         sites_config[group][site] = newPath;
       }
-      
+
       await apiFetch("/api/admin/sites/config", { method: "POST", body: JSON.stringify({ sites_config, site_key_map }) });
       loadAdminSites();
       loadSites();
@@ -1219,11 +1221,11 @@ function renderAdminSites(config) {
     btn.onclick = async () => {
       const { group, site } = btn.dataset;
       if (!confirm(`Xóa site "${site}"? Thao tác này sẽ xóa cả thư mục trên OneDrive.`)) return;
-      
+
       try {
-        await apiFetch("/api/admin/sites", { 
-          method: "DELETE", 
-          body: JSON.stringify({ group, site }) 
+        await apiFetch("/api/admin/sites", {
+          method: "DELETE",
+          body: JSON.stringify({ group, site })
         });
         showToast("Thành công", "Đã xóa Site và thư mục trên OneDrive");
         loadAdminSites();
@@ -1295,7 +1297,7 @@ function renderAdminPics(pics) {
       </td>
     </tr>
   `).join("");
-  
+
   $$(".admin-pic-edit").forEach(btn => {
     btn.onclick = async () => {
       const oldName = btn.dataset.name;
@@ -1341,8 +1343,8 @@ function _renderAdminTemplatesTable() {
   const tbody = $("#admin-templates-tbody");
   if (!tbody) return;
   const kw = ($("#admin-tpl-search")?.value || "").toLowerCase();
-  
-  const filtered = state.currentAdminTplItems.filter(it => 
+
+  const filtered = state.currentAdminTplItems.filter(it =>
     it.file_name.toLowerCase().includes(kw)
   );
 
@@ -1360,26 +1362,26 @@ function _renderAdminTemplatesTable() {
   $$(".admin-tpl-edit").forEach(btn => {
     btn.onclick = async () => {
       const { site, id, name } = btn.dataset;
-      const res = await apiFetch("/api/report/text", { 
-        method: "POST", 
-        body: JSON.stringify({ file_id: id, file_name: name, raw: true }) 
+      const res = await apiFetch("/api/report/text", {
+        method: "POST",
+        body: JSON.stringify({ file_id: id, file_name: name, raw: true })
       });
-      
+
       // Use the new large modal instead of window.prompt
       $("#tpl-edit-label").textContent = `Đang sửa: ${name} (Site: ${site})`;
       $("#tpl-edit-content").value = res.text;
       openModal("tpl-edit");
-      
+
       $("#tpl-edit-save").onclick = async () => {
         const newContent = $("#tpl-edit-content").value;
         const btnSave = $("#tpl-edit-save");
         btnSave.disabled = true;
         btnSave.textContent = "⏳ Đang lưu...";
-        
+
         try {
-          await apiFetch("/api/admin/site-items", { 
-            method: "POST", 
-            body: JSON.stringify({ site_key: site, filename: name, content: newContent }) 
+          await apiFetch("/api/admin/site-items", {
+            method: "POST",
+            body: JSON.stringify({ site_key: site, filename: name, content: newContent })
           });
           showToast("Thành công", "Đã cập nhật nội dung trực tiếp trên OneDrive");
           closeModal("tpl-edit");
@@ -1398,7 +1400,7 @@ function _renderAdminTemplatesTable() {
       const { site, id, name } = btn.dataset;
       const newName = window.prompt(`Đổi tên file ${name} thành:`, name);
       if (!newName || newName === name) return;
-      
+
       try {
         await apiFetch("/api/admin/site-items", {
           method: "PATCH",
@@ -1468,7 +1470,7 @@ function _formatContactRecoveryTime(startTime, startDate, endTime, endDate) {
     const remainingMinutes = minutes % (24 * 60);
     const hours = Math.floor(remainingMinutes / 60);
     const mins = remainingMinutes % 60;
-    
+
     let parts = [];
     if (days > 0) {
       parts.push(`${days} ngày`);
@@ -1540,7 +1542,7 @@ function openContactModal() {
   openModal("contact");
 
   // Sau do dien thong tin (dam bao DOM da san sang)
-  const device    = _extractFromReport("thiết bị");
+  const device = _extractFromReport("thiết bị");
   const timeStart = _extractTimeFromReport();
 
   const deviceInput = $("#contact-device");
@@ -1568,11 +1570,11 @@ function openContactModal() {
       // Reset fields
       if (startDateInput) startDateInput.value = "";
       if (endDateInput) endDateInput.value = "";
-      ["contact-time-start-h","contact-time-start-m",
-       "contact-time-end-h","contact-time-end-m"].forEach(id => {
-        const el = $(`#${id}`);
-        if (el) el.value = "";
-      });
+      ["contact-time-start-h", "contact-time-start-m",
+        "contact-time-end-h", "contact-time-end-m"].forEach(id => {
+          const el = $(`#${id}`);
+          if (el) el.value = "";
+        });
 
       closeModal("contact");
     };
@@ -1595,11 +1597,11 @@ function bindContactModal() {
     if (endDateInput) endDateInput.value = "";
 
     // Reset time pickers
-    ["contact-time-start-h","contact-time-start-m",
-     "contact-time-end-h","contact-time-end-m"].forEach(id => {
-      const el = $(`#${id}`);
-      if (el) el.value = "";
-    });
+    ["contact-time-start-h", "contact-time-start-m",
+      "contact-time-end-h", "contact-time-end-m"].forEach(id => {
+        const el = $(`#${id}`);
+        if (el) el.value = "";
+      });
     closeModal("contact");
   };
 }
@@ -1619,20 +1621,20 @@ function bindStatusModal() {
       const siteName = e.target.value.trim();
       updateDevicesDatalist(siteName);
     };
-    
+
     // Show datalist immediately on focus/click to help arrow key selection
     deptInput.onfocus = () => {
       // In some browsers, clearing and restoring the value or double clicking shows the list
       // But for now, we just ensure it's up to date
     };
-    
+
     // When an option is selected from the datalist, the input event fires.
     // If the value matches an option, we can immediately update the devices.
     deptInput.onchange = (e) => {
       const siteName = e.target.value.trim();
       updateDevicesDatalist(siteName);
     };
-    
+
     // Trigger once on open to sync if already filled
     if (deptInput.value) updateDevicesDatalist(deptInput.value);
   }
@@ -1648,32 +1650,32 @@ function bindStatusModal() {
   $("#status-submit").onclick = async () => {
     const btn = $("#status-submit");
     const originalText = btn.textContent;
-    
+
     const body = {
-      confirmed:   false,
-      dept:        $("#status-dept").value.trim(),
-      device:      $("#status-device").value.trim(),
-      pic:         $("#status-pic").value,
-      alarm_type:  $("#status-alarm-type").value,
+      confirmed: false,
+      dept: $("#status-dept").value.trim(),
+      device: $("#status-device").value.trim(),
+      pic: $("#status-pic").value,
+      alarm_type: $("#status-alarm-type").value,
       alarm_level: $("#status-alarm-level").value,
-      status:      $("#status-done").value,
-      week:        $("#status-week").value,
-      start_time:  _getTimePicker("status-start"),
-      start_date:  $("#status-start-date").value,
-      end_time:    _getTimePicker("status-end"),
-      end_date:    $("#status-end-date").value,
-      desc:        $("#status-desc").value.trim(),
+      status: $("#status-done").value,
+      week: $("#status-week").value,
+      start_time: _getTimePicker("status-start"),
+      start_date: $("#status-start-date").value,
+      end_time: _getTimePicker("status-end"),
+      end_date: $("#status-end-date").value,
+      desc: $("#status-desc").value.trim(),
     };
 
     // Validate (Các trường có thể dùng hàm Excel được phép để trống)
     const missing = [];
-    if (!body.dept)       missing.push("Site");
-    if (!body.device)     missing.push("Thiết bị");
+    if (!body.dept) missing.push("Site");
+    if (!body.device) missing.push("Thiết bị");
     if (!body.start_date) missing.push("Ngày bắt đầu");
     if (!body.start_time) missing.push("Giờ bắt đầu");
-    if (!body.end_date)   missing.push("Ngày kết thúc");
-    if (!body.end_time)   missing.push("Giờ kết thúc");
-    if (!body.desc)       missing.push("Mô tả");
+    if (!body.end_date) missing.push("Ngày kết thúc");
+    if (!body.end_time) missing.push("Giờ kết thúc");
+    if (!body.desc) missing.push("Mô tả");
 
     if (missing.length > 0) {
       showToast("Thiếu thông tin", "Vui lòng điền: " + missing.join(", "));
@@ -1687,7 +1689,7 @@ function bindStatusModal() {
       const notice = $("#status-excel-notice");
       if (notice) notice.style.display = "block";
       const res = await apiFetch("/api/status", { method: "POST", body: JSON.stringify(body), timeout: 60000 });
-      
+
       if (res.error) {
         showToast("Lỗi", res.error);
       } else {
@@ -1715,14 +1717,14 @@ function bindNotificationForm() {
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const body = {
-      site:        $("#notif-site").value.trim(),
+      site: $("#notif-site").value.trim(),
       description: $("#notif-description").value.trim(),
-      start_time:  $("#notif-start-time").value.trim(),
-      start_date:  $("#notif-start-date").value || today,
-      end_time:    $("#notif-end-time").value.trim(),
-      end_date:    $("#notif-end-date").value || today,
-      devices:     $("#notif-devices").value.trim(),
-      note:        $("#notif-note").value.trim(),
+      start_time: $("#notif-start-time").value.trim(),
+      start_date: $("#notif-start-date").value || today,
+      end_time: $("#notif-end-time").value.trim(),
+      end_date: $("#notif-end-date").value || today,
+      devices: $("#notif-devices").value.trim(),
+      note: $("#notif-note").value.trim(),
     };
     try {
       const res = await apiFetch("/api/notification", { method: "POST", body: JSON.stringify(body) });
@@ -1774,7 +1776,7 @@ function initNoteFormGrids() {
   // Bind Days select all
   const daysAll = $("#note-days-all");
   if (daysAll) {
-    daysAll.onchange = function() {
+    daysAll.onchange = function () {
       const cbs = $$("#note-days-grid input[type='checkbox']");
       cbs.forEach(cb => {
         cb.checked = this.checked;
@@ -1786,7 +1788,7 @@ function initNoteFormGrids() {
   // Bind Months select all
   const monthsAll = $("#note-months-all");
   if (monthsAll) {
-    monthsAll.onchange = function() {
+    monthsAll.onchange = function () {
       const cbs = $$("#note-months-grid input[type='checkbox']");
       cbs.forEach(cb => {
         cb.checked = this.checked;
@@ -1794,7 +1796,7 @@ function initNoteFormGrids() {
       });
     };
   }
-  
+
   // Tag-along updates for "Select All" on individual checkbox changes
   document.addEventListener("change", e => {
     if (e.target && e.target.name === "note-day-cb") {
@@ -1814,10 +1816,10 @@ function updateNoteTimeTagsUI() {
   const container = $("#note-time-tags");
   if (!container) return;
   container.innerHTML = "";
-  
+
   // Sort times ascending for better display
   state.noteTimeTags.sort();
-  
+
   state.noteTimeTags.forEach(t => {
     const tag = document.createElement("span");
     tag.className = "time-tag";
@@ -1842,7 +1844,7 @@ function resetNoteForm() {
   state.editingNoteStt = null;
   state.noteTimeTags = [];
   updateNoteTimeTagsUI();
-  
+
   $("#note-keyword").value = "";
   $("#note-content").value = "";
   $("#note-emails").value = "";
@@ -1851,7 +1853,7 @@ function resetNoteForm() {
   $("#note-repeat-interval").value = "5";
   $("#note-mode").value = "1 lần";
   $("#note-delete-mode").value = "delete";
-  
+
   // Uncheck grids
   $$("#note-days-grid input[type='checkbox']").forEach(cb => {
     cb.checked = false;
@@ -1887,12 +1889,12 @@ function renderUserEmailChips() {
   const container = $("#note-user-select-container");
   if (!container) return;
   container.innerHTML = "";
-  
+
   if (state.userEmails.length === 0) {
     container.innerHTML = `<span style="font-size:12px; color:var(--text-muted); padding:4px;">Không có email người dùng để chọn.</span>`;
     return;
   }
-  
+
   state.userEmails.forEach(u => {
     const chip = document.createElement("span");
     chip.className = "user-email-chip";
@@ -1901,7 +1903,7 @@ function renderUserEmailChips() {
     chip.onclick = () => toggleUserEmailSelection(u.email);
     container.appendChild(chip);
   });
-  
+
   syncUserEmailChips();
 }
 
@@ -1909,13 +1911,13 @@ function toggleUserEmailSelection(email) {
   const input = $("#note-emails");
   if (!input) return;
   let emails = input.value.split(",").map(e => e.trim()).filter(Boolean);
-  
+
   if (emails.includes(email)) {
     emails = emails.filter(e => e !== email);
   } else {
     emails.push(email);
   }
-  
+
   input.value = emails.join(", ");
   syncUserEmailChips();
 }
@@ -1924,7 +1926,7 @@ function syncUserEmailChips() {
   const input = $("#note-emails");
   if (!input) return;
   const emails = input.value.split(",").map(e => e.trim()).filter(Boolean);
-  
+
   $$(".user-email-chip").forEach(chip => {
     const email = chip.dataset.email;
     if (emails.includes(email)) {
@@ -1975,16 +1977,16 @@ function bindNoteCreate() {
     const keyword = $("#note-keyword").value.trim();
     const content = $("#note-content").value.trim();
     const emailsRaw = $("#note-emails").value.trim();
-    
+
     // Parse emails
     const emails = emailsRaw ? emailsRaw.split(",").map(e => e.trim()).filter(Boolean) : [];
-    
+
     // Collect days
     const days = $$("#note-days-grid input[type='checkbox']:checked").map(cb => cb.value);
-    
+
     // Collect months
     const months = $$("#note-months-grid input[type='checkbox']:checked").map(cb => cb.value);
-    
+
     const repeat_count = parseInt($("#note-repeat-count").value) || 1;
     const repeat_interval = parseInt($("#note-repeat-interval").value) || 5;
     const mode = $("#note-mode").value;
@@ -2041,11 +2043,11 @@ function bindNoteCreate() {
         showToast("Lỗi", res.error);
         return;
       }
-      
+
       showToast("Thành công", isEdit ? `Đã cập nhật note #${res.stt}` : `Đã tạo nhắc nhở thành công!`);
-      
+
       resetNoteForm();
-      
+
       // Chuyển sang tab Xem Note
       const tabView = $("#tab-note-view");
       if (tabView) tabView.click();
@@ -2058,7 +2060,7 @@ function bindNoteCreate() {
 function getNextTriggerTimeStr(note) {
   if (note.done) return "Đã xong";
   if (note.paused) return "Tạm dừng";
-  
+
   const now = new Date();
   let closestTrigger = null;
   const currentYear = now.getFullYear();
@@ -2072,7 +2074,7 @@ function getNextTriggerTimeStr(note) {
         for (const timeStr of note.times) {
           const [h, m] = timeStr.split(":").map(Number);
           const triggerDate = new Date(year, month, day, h, m, 0, 0);
-          
+
           // Kiểm tra ngày có hợp lệ hay không (tránh tràn ngày như 30/2)
           if (triggerDate.getFullYear() === year && triggerDate.getMonth() === month && triggerDate.getDate() === day) {
             if (triggerDate > now) {
@@ -2085,9 +2087,9 @@ function getNextTriggerTimeStr(note) {
       }
     }
   }
-  
+
   if (!closestTrigger) return "Hết hạn";
-  
+
   const diffMs = closestTrigger - now;
   const diffMins = Math.floor(diffMs / 60000);
   if (diffMins < 60) {
@@ -2107,7 +2109,7 @@ async function loadNotesList() {
   const loading = $("#note-table-loading");
   const table = $("#note-list-table");
   const empty = $("#note-empty-state");
-  
+
   if (loading) loading.style.display = "block";
   if (table) table.style.display = "none";
   if (empty) empty.style.display = "none";
@@ -2115,7 +2117,7 @@ async function loadNotesList() {
   try {
     const notes = await apiFetch("/api/notes");
     state.notesList = notes;
-    
+
     // Cập nhật số lượng Badge trên thanh menu (các note đang hoạt động)
     const activeNotesCount = notes.filter(n => !n.done && !n.paused).length;
     const badge = $("#note-badge");
@@ -2140,7 +2142,7 @@ function renderNotesTable(notes) {
   const tbody = $("#notes-tbody");
   if (!tbody) return;
   tbody.innerHTML = "";
-  
+
   const table = $("#note-list-table");
   const empty = $("#note-empty-state");
 
@@ -2197,10 +2199,10 @@ function renderNotesTable(notes) {
       <td style="font-size:12px; font-weight:500;">${nextTrigger}</td>
       <td style="text-align:center;">
         <button class="action-icon-btn edit-btn" data-stt="${n.stt}" title="Sửa"><i class="fas fa-edit"></i></button>
-        ${n.paused 
-          ? `<button class="action-icon-btn resume-btn" data-stt="${n.stt}" title="Kích hoạt"><i class="fas fa-play"></i></button>`
-          : `<button class="action-icon-btn pause-btn" data-stt="${n.stt}" title="Tạm dừng"><i class="fas fa-pause"></i></button>`
-        }
+        ${n.paused
+        ? `<button class="action-icon-btn resume-btn" data-stt="${n.stt}" title="Kích hoạt"><i class="fas fa-play"></i></button>`
+        : `<button class="action-icon-btn pause-btn" data-stt="${n.stt}" title="Tạm dừng"><i class="fas fa-pause"></i></button>`
+      }
         <button class="delete-row-btn" data-stt="${n.stt}" title="Xóa"><i class="fas fa-trash-alt"></i></button>
       </td>
     `;
@@ -2251,7 +2253,7 @@ function renderNotesTable(notes) {
 
 function editNote(note) {
   state.editingNoteStt = note.stt;
-  
+
   // Điền dữ liệu vào form
   $("#note-keyword").value = note.keyword;
   $("#note-content").value = note.content;
@@ -2260,11 +2262,11 @@ function editNote(note) {
   $("#note-repeat-interval").value = note.repeat_interval || 5;
   $("#note-mode").value = note.mode || "1 lần";
   $("#note-delete-mode").value = note.delete_mode || "delete";
-  
+
   // Load times
   state.noteTimeTags = [...note.times];
   updateNoteTimeTagsUI();
-  
+
   // Check checkboxes trong grid ngày
   $$("#note-days-grid input[type='checkbox']").forEach(cb => {
     cb.checked = note.days.includes(cb.value);
@@ -2272,7 +2274,7 @@ function editNote(note) {
   });
   const allDays = $$("#note-days-grid input[type='checkbox']");
   if ($("#note-days-all")) $("#note-days-all").checked = allDays.every(cb => cb.checked);
-  
+
   // Check checkboxes trong grid tháng
   $$("#note-months-grid input[type='checkbox']").forEach(cb => {
     cb.checked = note.months.includes(cb.value);
@@ -2280,7 +2282,7 @@ function editNote(note) {
   });
   const allMonths = $$("#note-months-grid input[type='checkbox']");
   if ($("#note-months-all")) $("#note-months-all").checked = allMonths.every(cb => cb.checked);
-  
+
   // Đổi title và text button submit
   $("#note-form-title").textContent = `Chỉnh sửa Nhắc Nhở #${note.stt}`;
   $("#note-create-submit").textContent = "Cập nhật";
@@ -2288,7 +2290,7 @@ function editNote(note) {
 
   // Sync user email chips
   syncUserEmailChips();
-  
+
   // Click tab Tạo Note để hiển thị form
   const tabCreate = $("#tab-note-create");
   if (tabCreate) tabCreate.click();
@@ -2332,7 +2334,7 @@ function bindNotifFormInNote() {
 
 /* ── DAVITEQ image viewer ────────────────────────────────────── */
 let daviteqInited = false;
-let daviteqCats   = {};
+let daviteqCats = {};
 
 async function initDaviteqViewer() {
   if (daviteqInited) return;
@@ -2461,8 +2463,8 @@ function renderDocTable(files) {
 }
 
 function bindDocSearch() {
-  const searchInput  = $("#doc-search");
-  const modeBtns     = $$(".doc-mode-btn");
+  const searchInput = $("#doc-search");
+  const modeBtns = $$(".doc-mode-btn");
 
   searchInput.addEventListener("input", function () {
     const mode = $(".doc-mode-btn.active")?.dataset.mode || "name";
@@ -2529,7 +2531,7 @@ async function startDeviceFlowAuth() {
     statusEl.textContent = "⏳ Đang chờ người dùng thao tác...";
 
     if (authPollInterval) clearInterval(authPollInterval);
-    
+
     // Poll the backend to check if the user completed flow
     authPollInterval = setInterval(async () => {
       try {
@@ -2540,7 +2542,7 @@ async function startDeviceFlowAuth() {
           state.graphAuthenticated = true;
           statusEl.textContent = "✅ Đăng nhập OneDrive thành công!";
           statusEl.style.color = "var(--success-color)";
-          
+
           showToast("Xác thực thành công", "Đã xác thực, đang tự động đồng bộ...");
           setTimeout(() => {
             modal.classList.remove("open");
@@ -2578,9 +2580,9 @@ function startNotificationPoller() {
   if (state.pollerStarted) return;
   state.pollerStarted = true;
 
-  let _pollTimer   = null;
-  let _controller  = null;
-  let _running     = false;
+  let _pollTimer = null;
+  let _controller = null;
+  let _running = false;
 
   async function poll() {
     if (!state.authenticated || document.hidden) return;
@@ -2611,7 +2613,7 @@ function startNotificationPoller() {
 
   function start() {
     if (_running) return;
-    _running  = true;
+    _running = true;
     poll();
     _pollTimer = setInterval(poll, 15000);
   }
@@ -2639,7 +2641,7 @@ function bindGroupTabs() {
       renderSiteList(tab.dataset.group);
       // Reset active item
       if (state.activeItemBtn) state.activeItemBtn.classList.remove("active");
-      state.activeItemBtn  = null;
+      state.activeItemBtn = null;
       state.currentSiteKey = null;
     };
   });
@@ -2655,7 +2657,7 @@ let _currentReminder = null;
 function playNotificationSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
+
     // Play a sequence of notes mimicking a bright marimba alarm melody (similar to iPhone)
     const notes = [
       { freq: 659.25, delay: 0.0, dur: 0.25 },   // E5
@@ -2666,26 +2668,26 @@ function playNotificationSound() {
       { freq: 1046.50, delay: 0.60, dur: 0.25 }, // C6
       { freq: 1318.51, delay: 0.72, dur: 0.45 }   // E6
     ];
-    
+
     const playNote = (frequency, startTime, duration) => {
       const osc = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
-      
+
       // Use triangle wave for a plucky, marimba-like tone
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(frequency, startTime);
-      
+
       // Fast attack and exponential decay for a crisp plucking sound (loud and clear)
       gainNode.gain.setValueAtTime(0, startTime);
       gainNode.gain.linearRampToValueAtTime(0.8, startTime + 0.01); // Peak volume at 0.8 (loud!)
       gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-      
+
       osc.connect(gainNode);
       gainNode.connect(audioCtx.destination);
       osc.start(startTime);
       osc.stop(startTime + duration);
     };
-    
+
     const now = audioCtx.currentTime;
     notes.forEach(note => {
       playNote(note.freq, now + note.delay, note.dur);
@@ -2713,7 +2715,7 @@ function _showNextReminder() {
   const { keyword, content, time } = reminder;
   $("#reminder-keyword").textContent = keyword;
   $("#reminder-content").textContent = content;
-  $("#reminder-time").textContent    = `⏰ ${time}`;
+  $("#reminder-time").textContent = `⏰ ${time}`;
   $("#reminder-overlay").classList.add("open");
 }
 
@@ -2727,7 +2729,7 @@ function snoozeReminder() {
   if (!_currentReminder) return;
   const reminderToSnooze = { ..._currentReminder };
   closeReminder();
-  
+
   // Nhắc lại sau 5 phút
   setTimeout(() => {
     showReminder(reminderToSnooze.keyword, reminderToSnooze.content, reminderToSnooze.time);
@@ -2743,7 +2745,7 @@ function showChartsModal() {
 document.addEventListener("DOMContentLoaded", () => {
   handleAuthQueryHint();
   initTheme();
-  
+
   const boots = [
     bindThemeToggle, initSidebarResize, bindItemSearch,
     bindAuthButtons, bindGroupTabs, bindSiteSearch, bindOutputActions,
@@ -2792,9 +2794,9 @@ function bindThemeToggle() {
 
 /* ── Sidebar resize ──────────────────────────────────────────── */
 function initSidebarResize() {
-  const sidebar  = $("#sidebar");
-  const resizer  = $("#sidebar-resizer");
-  const app      = $("#app");
+  const sidebar = $("#sidebar");
+  const resizer = $("#sidebar-resizer");
+  const app = $("#app");
   if (!resizer) return;
 
   let startX = 0;

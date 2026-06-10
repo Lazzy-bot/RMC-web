@@ -25,7 +25,7 @@ def create_app() -> Flask:
         static_folder=os.path.join(os.path.dirname(__file__), "..", "frontend"),
         static_url_path="",
     )
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2, x_proto=1, x_host=1)
     app.secret_key = APP_SECRET_KEY
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = True
@@ -135,6 +135,9 @@ def create_app() -> Flask:
     def enforce_user_access():
         path = request.path
         client_ip = request.remote_addr or "unknown"
+
+        if request.method == "OPTIONS":
+            return None
 
         if not path.startswith("/api"):
             return None

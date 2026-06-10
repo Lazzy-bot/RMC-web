@@ -81,7 +81,7 @@ services:
     # FIX #6: Chạy ngrok qua http với domain tĩnh và bật Endpoint Pools
     command: >
       http
-      --url=credible-goofiness-tile.ngrok-free.dev
+      --url=balance-rotting-blooming.ngrok-free.dev
       rmc-assistant:5000
       --pooling-enabled
     environment:

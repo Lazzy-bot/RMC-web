@@ -80,7 +80,8 @@ def login(provider: str):
     if PUBLIC_BASE_URL:
         redirect_uri = f"{PUBLIC_BASE_URL}/api/auth/callback/{provider}"
     else:
-        redirect_uri = url_for("auth.auth_callback", provider=provider, _external=True)
+        scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
+        redirect_uri = url_for("auth.auth_callback", provider=provider, _external=True, _scheme=scheme)
 
     # Với Microsoft: Đã cấp quyền trên Azure, request luôn Mail.Send
     if provider == "microsoft":
@@ -105,7 +106,8 @@ def grant_mail_send():
     if PUBLIC_BASE_URL:
         redirect_uri = f"{PUBLIC_BASE_URL}/api/auth/callback/microsoft"
     else:
-        redirect_uri = url_for("auth.auth_callback", provider="microsoft", _external=True)
+        scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
+        redirect_uri = url_for("auth.auth_callback", provider="microsoft", _external=True, _scheme=scheme)
 
     client = get_oauth_client("microsoft")
     if not client:
@@ -184,7 +186,8 @@ def auth_callback(provider: str):
             if PUBLIC_BASE_URL:
                 redirect_uri = f"{PUBLIC_BASE_URL}/api/auth/callback/microsoft"
             else:
-                redirect_uri = url_for("auth.auth_callback", provider="microsoft", _external=True)
+                scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
+                redirect_uri = url_for("auth.auth_callback", provider="microsoft", _external=True, _scheme=scheme)
             token = _ms_exchange_code(code, redirect_uri)
         else:
             token = client.authorize_access_token()
